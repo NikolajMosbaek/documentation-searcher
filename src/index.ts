@@ -72,6 +72,7 @@ app.on('message', async ({ activity, send }) => {
     question,
     resolved: exchange.question,
     answeredFrom: exchange.answer.source,
+    entryFile: exchange.entryFile,
   });
 
   await send(formatAnswer(exchange.answer));

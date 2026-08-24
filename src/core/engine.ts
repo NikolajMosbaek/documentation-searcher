@@ -39,8 +39,14 @@ export interface Derivation {
  * the implementation, but nothing here knows that -- so no call site does either.
  */
 export interface AnalysisEngine {
-  /** Derive an answer from the codebase, or null if it cannot. */
-  deriveAnswer(question: string): Promise<Derivation | null>;
+  /**
+   * Derive an answer from the codebase, or null if it cannot.
+   *
+   * `guidance` points the engine at something worth re-reading -- currently a
+   * disputed answer. It is never content to be repeated back: the codebase
+   * remains the only thing an answer may be derived from.
+   */
+  deriveAnswer(question: string, guidance?: string): Promise<Derivation | null>;
 }
 
 /**

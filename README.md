@@ -4,6 +4,10 @@ Ask a codebase about its own behaviour from Microsoft Teams. See `PRD.md` for wh
 
 ## Where this is right now
 
+**Iteration 6: correcting an answer from the thread.** Saying *"that's wrong"* in the conversation makes the bot read the code again and rewrite the entry that produced the answer. The PRD's four maintenance paths are now all present: the bot fills gaps, the bot refreshes what went stale, developers edit the files, and anyone can flag a bad answer where they found it.
+
+An objection is never treated as fact. It is handed to the engine as a pointer at what to re-read, with an instruction to contradict the objector if the code does — because the PRD makes the code the only source of truth, and someone in a chat thread is not the code. Measured against a deliberately false objection, the bot re-read and stood by its original answer.
+
 **Iteration 5: follow-up questions.** A thread is now a conversation. A question that leans on what came before — *"and how does it know?"* — is rewritten into one that stands on its own before anything else sees it, so retrieval, derivation, and the entry that gets written all work on a question that means something by itself.
 
 That last part is the reason this mattered more than it looked. Since the bot began writing entries, an unresolved follow-up was not merely answered badly; it was *stored*, under a title and keywords meaningless to anyone who was not in the thread.
@@ -67,6 +71,7 @@ src/core/claudeEngine.ts   the real engine: reads the codebase read-only, return
 src/core/sourceIndex.ts    content-hashes the files an answer came from, so staleness is detectable
 src/core/retrieval.ts      BM25 over the entries; in-memory, rebuilt whenever one is written
 src/core/followUp.ts       decides whether a question leans on the conversation, and the resolver interface
+src/core/correction.ts     spots someone disputing an answer, and turns the objection into something to check
 src/core/claudeResolver.ts rewrites a follow-up so it stands alone; reads the thread, never the codebase
 src/core/*.test.ts         the suite -- run with `npm test`
 src/core/threadContext.ts  in-memory conversation memory
@@ -106,7 +111,9 @@ A malformed entry is skipped with a warning rather than taking down the whole kn
 
 ## Deliberately not built yet
 
-Guided seeding, in-thread correction, and real Teams registration.
+Guided seeding and real Teams registration.
+
+Nothing rate-limits a dispute. Flagging an answer costs a full derivation, so anyone who can reach the bot can spend money by repeatedly disagreeing with it.
 
 Resolving a follow-up costs four to six seconds, which is most of what an asker waits for when the answer is already stored. A smaller model was measured and is *slower*, so the cost is very likely per-call subprocess overhead in the Agent SDK rather than inference — a plain Messages API call would suit a text rewrite far better.
 

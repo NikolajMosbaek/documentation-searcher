@@ -204,6 +204,8 @@ function findWithIndex(
  */
 export interface KnowledgeBase {
   find(question: string): Entry | undefined;
+  /** The entry stored in a given file, so a disputed answer can be traced back. */
+  byFile(file: string): Entry | undefined;
   /** Store a derivation and make it findable immediately. */
   add(derivation: Derivation): Entry;
   /**
@@ -229,6 +231,10 @@ export function createKnowledgeBase(directory: string): KnowledgeBase {
   return {
     find(question: string): Entry | undefined {
       return findWithIndex(entries, index, question);
+    },
+
+    byFile(file: string): Entry | undefined {
+      return entries.find((entry) => entry.file === file);
     },
 
     add(derivation: Derivation): Entry {

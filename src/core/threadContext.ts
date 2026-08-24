@@ -15,6 +15,8 @@ export interface Turn {
   resolved: string;
   /** Tracks the answer's own provenance rather than restating it. */
   answeredFrom: Answer['source'];
+  /** Which stored entry answered, when one did. What a dispute acts on. */
+  entryFile?: string;
 }
 
 export interface ThreadContext {

@@ -86,12 +86,12 @@ export function createClaudeEngine(config: ClaudeEngineConfig): AnalysisEngine {
   const sources = createSourceIndex(config.codebase);
 
   return {
-    async deriveAnswer(question: string): Promise<Derivation | null> {
+    async deriveAnswer(question: string, guidance?: string): Promise<Derivation | null> {
       let structured: unknown;
 
       try {
         for await (const message of query({
-          prompt: question,
+          prompt: guidance ? `${question}\n\n${guidance}` : question,
           options: {
             cwd: config.codebase,
             tools: READ_ONLY_TOOLS,

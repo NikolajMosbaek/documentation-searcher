@@ -11,7 +11,7 @@ export interface Answer {
   /** Conditions and exceptions that change the behaviour. */
   edgeCases: string[];
   /** Where this answer came from. Diagnostic only -- never shown to the asker. */
-  source: 'knowledge-base' | 'engine' | 'stale' | 'miss';
+  source: 'knowledge-base' | 'engine' | 'corrected' | 'stale' | 'miss';
 }
 
 export function formatAnswer(answer: Answer): string {
@@ -25,6 +25,10 @@ export function formatAnswer(answer: Answer): string {
       '_The code behind this answer has changed since it was written, and it could not be checked again just now. Treat it as possibly out of date._',
       '',
     );
+  }
+
+  if (answer.source === 'corrected') {
+    lines.push('_Thanks — I read the code again. Here is what I found._', '');
   }
 
   lines.push('**Short answer**', answer.shortAnswer);
@@ -51,6 +55,21 @@ export function missAnswer(): Answer {
   return {
     shortAnswer:
       "I don't have an answer to that yet, and I won't guess at one. Nothing in what I know covers it.",
+    behaviour: [],
+    edgeCases: [],
+    source: 'miss',
+  };
+}
+
+/**
+ * Someone disputed an answer and the code could not be read again. Saying that
+ * plainly beats both pretending to have re-checked and pretending to know
+ * nothing about the question.
+ */
+export function recheckFailedAnswer(): Answer {
+  return {
+    shortAnswer:
+      'I could not read the code again just now, so I have left the answer as it was. Flagging it again in a little while will retry.',
     behaviour: [],
     edgeCases: [],
     source: 'miss',

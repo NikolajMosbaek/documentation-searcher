@@ -212,3 +212,88 @@ test('with no resolver configured, nothing is rewritten', async () => {
   assert.equal(exchange.question, 'and them?');
   rmSync(directory, { recursive: true, force: true });
 });
+
+test('flagging an answer as wrong re-reads the code and replaces the entry', async () => {
+  const { directory, knowledgeBase } = base();
+  const sources = movableSources();
+  const seen: Array<string | undefined> = [];
+  let text = 'Credit is added to the balance.';
+  const engine: AnalysisEngine = {
+    async deriveAnswer(_q, guidance) { seen.push(guidance); return derivation(text, sources.current); },
+  };
+  const core = createCore(knowledgeBase, engine, sources);
+
+  const first = await core.ask(QUESTION, THREAD);
+  const stored = first.entryFile!;
+  assert.ok(stored, 'the first answer did not record which entry it came from');
+
+  text = 'Credit is added only once the code has been verified.';
+  const thread = {
+    threadId: 't',
+    turns: [{ question: QUESTION, resolved: QUESTION, answeredFrom: 'engine' as const, entryFile: stored }],
+  };
+  const corrected = await core.ask('that is wrong, it needs verifying first', thread);
+
+  assert.equal(corrected.answer.source, 'corrected');
+  assert.equal(corrected.answer.shortAnswer, text);
+  assert.equal(corrected.question, QUESTION, 'the dispute was treated as a new question');
+  assert.equal(knowledgeBase.size, 1, 'correcting duplicated the entry');
+  assert.equal(knowledgeBase.byFile(stored)?.answer.shortAnswer, text);
+
+  // The objection reached the engine as guidance, not as the question.
+  assert.equal(seen.length, 2);
+  assert.equal(seen[0], undefined);
+  assert.match(seen[1]!, /it needs verifying first/);
+  assert.match(seen[1]!, /not evidence/);
+  rmSync(directory, { recursive: true, force: true });
+});
+
+test('a dispute the code does not support leaves the answer standing', async () => {
+  const { directory, knowledgeBase } = base();
+  const sources = movableSources();
+  const original = 'Credit is added to the balance.';
+  // The engine re-reads and reports the same thing: the objector was mistaken.
+  const core = createCore(knowledgeBase, {
+    async deriveAnswer() { return derivation(original, sources.current); },
+  }, sources);
+
+  const first = await core.ask(QUESTION, THREAD);
+  const thread = {
+    threadId: 't',
+    turns: [{ question: QUESTION, resolved: QUESTION, answeredFrom: 'engine' as const, entryFile: first.entryFile }],
+  };
+  const corrected = await core.ask('no, that is wrong', thread);
+
+  assert.equal(corrected.answer.shortAnswer, original);
+  assert.equal(knowledgeBase.size, 1);
+  rmSync(directory, { recursive: true, force: true });
+});
+
+test('a dispute the code cannot be re-read for changes nothing', async () => {
+  const { directory, knowledgeBase } = base();
+  const sources = movableSources();
+  const stored = knowledgeBase.add(derivation('Credit is added to the balance.', sources.current));
+  const core = createCore(knowledgeBase, { async deriveAnswer() { return null; } }, sources);
+
+  const thread = {
+    threadId: 't',
+    turns: [{ question: QUESTION, resolved: QUESTION, answeredFrom: 'knowledge-base' as const, entryFile: stored.file }],
+  };
+  const answer = await core.ask('that is wrong', thread);
+
+  assert.match(answer.answer.shortAnswer, /could not read the code again/);
+  assert.equal(knowledgeBase.byFile(stored.file)?.answer.shortAnswer, 'Credit is added to the balance.');
+  rmSync(directory, { recursive: true, force: true });
+});
+
+test('a dispute with no previous turn is treated as an ordinary question', async () => {
+  const { directory, knowledgeBase } = base();
+  let asked: string | undefined;
+  const core = createCore(knowledgeBase, {
+    async deriveAnswer(q) { asked = q; return null; },
+  }, movableSources());
+
+  await core.ask('that is wrong', { threadId: 't', turns: [] });
+  assert.equal(asked, 'that is wrong');
+  rmSync(directory, { recursive: true, force: true });
+});
