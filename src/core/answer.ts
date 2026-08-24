@@ -62,6 +62,21 @@ export function missAnswer(): Answer {
 }
 
 /**
+ * Someone flagged an answer that was re-read moments ago. Reading the whole
+ * codebase again on demand is what makes this product expensive, so the same
+ * entry is not re-derived on repeat.
+ */
+export function recentlyRecheckedAnswer(): Answer {
+  return {
+    shortAnswer:
+      'I read the code for this one very recently, so I have not read it again. If it still looks wrong, the entry is a file in the repository and a developer can correct it directly.',
+    behaviour: [],
+    edgeCases: [],
+    source: 'stale',
+  };
+}
+
+/**
  * Someone disputed an answer and the code could not be read again. Saying that
  * plainly beats both pretending to have re-checked and pretending to know
  * nothing about the question.

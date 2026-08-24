@@ -4,6 +4,16 @@ Ask a codebase about its own behaviour from Microsoft Teams. See `PRD.md` for wh
 
 ## Where this is right now
 
+**Iteration 9: knowing what it costs.** The product turns on a question costing real money the first time and nothing afterwards, and until now that number was invisible. Every read of the codebase is reported with what it actually cost, why it happened, and a running session total:
+
+```
+[SPEND] $0.6070 miss     (session $0.6070) What does the bot do when nobody has configured a codebase for it?
+```
+
+Observed costs range from about $0.60 to about $1.15 per question, depending on how much of the codebase has to be read — so "roughly a dollar" is a range, not a figure.
+
+Two things that were silently expensive are now bounded or visible. Flagging the same answer repeatedly no longer reads the whole codebase each time; an entry re-read within the last five minutes is left alone. And when the second opinion is offered candidates and rejects them all, that is logged — those are exactly the questions where money was spent on something the knowledge base may already have held, and they are the evidence for whether the judge is tuned correctly.
+
 **Iteration 8: a second opinion on near misses.** Lexical retrieval is deliberately reluctant, which means it misses questions an entry really does answer — and a miss costs a derivation. When retrieval ranks something but is not confident, the candidates now go to a model that decides whether any of them actually answers the question. Cents and five seconds instead of a dollar and a minute.
 
 It is gated at both ends: a confident hit is never second-guessed, and a question sharing no word with anything is never sent, because there is nothing to weigh. The judge is told to choose nothing when in doubt — a wrong rescue answers a question nobody asked, while a wrong refusal merely costs the derivation that would have happened anyway.
@@ -66,6 +76,7 @@ Without `DOCSEARCHER_CODEBASE` the bot still runs and still answers from the kno
 | `DOCSEARCHER_MAX_USD` | `5` | Ceiling for a single derivation. Below about `1.5` real questions get cut off. |
 | `DOCSEARCHER_RESOLVER_MODEL` | falls back to `DOCSEARCHER_MODEL` | The model that rewrites follow-up questions. |
 | `DOCSEARCHER_JUDGE_MODEL` | falls back to `DOCSEARCHER_MODEL` | The model that weighs near-miss candidates. |
+| — | 5 minutes | How long an entry is left alone after a dispute re-read it. Set via `disputeCooldownMs` in code. |
 | `DOCSEARCHER_SEED_AREAS` | `8` | How many areas seeding proposes. |
 | `DOCSEARCHER_SEED_PLAN` | `./seed-plan.md` | Where the seeding checklist lives. |
 
@@ -143,6 +154,8 @@ Real Teams registration. Nothing in this project has yet run inside an actual Te
 
 Nothing rate-limits a dispute. Flagging an answer costs a full derivation, so anyone who can reach the bot can spend money by repeatedly disagreeing with it.
 
-Resolving a follow-up costs four to six seconds, which is most of what an asker waits for when the answer is already stored. A smaller model was measured and is *slower*, so the cost is very likely per-call subprocess overhead in the Agent SDK rather than inference — a plain Messages API call would suit a text rewrite far better.
+Resolving a follow-up costs four to six seconds, and weighing a near miss four to five, which is most of what an asker waits for when the answer is already stored. This was measured rather than guessed: a call doing the least possible work — no tools, one turn, one word of output — still takes about 3.2 seconds and costs $0.0017. The latency is fixed overhead per call to the agent harness, not inference, and a smaller model is *slower* rather than faster.
+
+The obvious fix is not free. A plain Messages API call would suit a text rewrite far better, but it needs its own credential, where the agent harness runs on whatever Claude Code is already authenticated with. That trades a few seconds of latency for an API key to provision and protect, so it has been left alone deliberately.
 
 Retrieval is lexical, and a second opinion now covers the band where it ranks something without being sure. What is still uncovered is a question sharing *no* vocabulary at all with the entry that answers it: nothing ranks, so there is nothing to weigh, and no amount of judging reaches it. Closing that means embeddings, which mean storage — deferred until a fake genuinely cannot cut it.

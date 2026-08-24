@@ -32,6 +32,11 @@ export interface Derivation {
    * on every read to decide whether the answer still describes the code.
    */
   fingerprint: string;
+  /**
+   * What deriving this actually cost, as the engine reports it. Optional
+   * because a stub engine spends nothing and should not have to pretend.
+   */
+  costUsd?: number;
 }
 
 /**

@@ -1,10 +1,10 @@
-import { missAnswer, recheckFailedAnswer, type Answer } from './answer.js';
+import { missAnswer, recentlyRecheckedAnswer, recheckFailedAnswer, type Answer } from './answer.js';
 import type { Entry, KnowledgeBase } from './knowledgeBase.js';
 import type { SourceIndex } from './sourceIndex.js';
 import { looksDependent, noFollowUpResolver, type FollowUpResolver } from './followUp.js';
 import { noJudge, type CandidateJudge } from './judge.js';
 import { asGuidance, looksLikeCorrection } from './correction.js';
-import type { AnalysisEngine } from './engine.js';
+import type { AnalysisEngine, Derivation } from './engine.js';
 import type { ThreadContext, Turn } from './threadContext.js';
 
 export { formatAnswer, findCodeReferences } from './answer.js';
@@ -56,8 +56,13 @@ export interface Exchange {
   entryFile?: string;
 }
 
+/** Why the codebase was read. Every one of these costs about a dollar. */
+export type SpendReason = 'miss' | 'refresh' | 'dispute';
+
 export interface Core {
   ask(question: string, thread: ThreadContext): Promise<Exchange>;
+  /** What this process has spent reading the codebase, as the engine reported it. */
+  spentUsd(): number;
 }
 
 /**
@@ -76,6 +81,12 @@ export interface CoreOptions {
   resolver?: FollowUpResolver;
   /** Without it, a near miss is derived from scratch rather than reconsidered. */
   judge?: CandidateJudge;
+  /**
+   * How long an entry is left alone after being re-read for a dispute. Nothing
+   * stops one person flagging the same answer repeatedly, and each flag reads
+   * the whole codebase again.
+   */
+  disputeCooldownMs?: number;
 }
 
 export function createCore(
@@ -83,9 +94,34 @@ export function createCore(
   engine: AnalysisEngine,
   options: CoreOptions = {},
 ): Core {
-  const { sources, resolver = noFollowUpResolver, judge = noJudge } = options;
+  const {
+    sources,
+    resolver = noFollowUpResolver,
+    judge = noJudge,
+    disputeCooldownMs = 5 * 60 * 1000,
+  } = options;
+
+  let spentUsd = 0;
+  const lastDisputed = new Map<string, number>();
+
+  /**
+   * The whole product turns on a question costing about a dollar the first time
+   * and nothing afterwards. Leaving that invisible makes the one number worth
+   * watching the one number nobody can see.
+   */
+  function recordSpend(reason: SpendReason, derivation: Derivation, question: string): void {
+    const cost = derivation.costUsd ?? 0;
+    spentUsd += cost;
+    console.log(
+      `[SPEND] $${cost.toFixed(4)} ${reason.padEnd(8)} (session $${spentUsd.toFixed(4)}) ${question}`,
+    );
+  }
 
   return {
+    spentUsd(): number {
+      return spentUsd;
+    },
+
     async ask(asked: string, thread: ThreadContext): Promise<Exchange> {
       // A dispute is not a new question -- it acts on the answer just given.
       const previous = thread.turns[thread.turns.length - 1];
@@ -113,6 +149,7 @@ export function createCore(
         // until it has been derived again from what the code says now.
         const refreshed = await engine.deriveAnswer(question);
         if (refreshed) {
+          recordSpend('refresh', refreshed, question);
           try {
             // Keep the question the entry was created under. A refresh may have
             // been triggered by a different phrasing that retrieval matched, and
@@ -136,6 +173,8 @@ export function createCore(
 
       // Lazy population on miss: storing it is what makes the second asker free.
       // A failure to store is not a failure to answer, so it does not propagate.
+      recordSpend('miss', derived, question);
+
       let stored: string | undefined;
       try {
         // The core is authoritative about what was asked; the engine only
@@ -158,7 +197,16 @@ export function createCore(
   async function reconsider(question: string): Promise<Entry | undefined> {
     const maybe = knowledgeBase.candidates(question);
     if (maybe.length === 0) return undefined;
-    return judge.choose(question, maybe);
+
+    const chosen = await judge.choose(question, maybe);
+    if (!chosen) {
+      // The cases worth collecting: something looked close, was rejected, and a
+      // dollar was then spent on a question the knowledge base may have held.
+      console.log(
+        `[INFO] weighed ${maybe.length} stored answer(s) and chose none, deriving instead: ${question}`,
+      );
+    }
+    return chosen;
   }
 
   /**
@@ -172,10 +220,21 @@ export function createCore(
     const question = previous.resolved;
     const existing = previous.entryFile ? knowledgeBase.byFile(previous.entryFile) : undefined;
 
+    if (existing) {
+      const lastRead = lastDisputed.get(existing.file);
+      if (lastRead !== undefined && Date.now() - lastRead < disputeCooldownMs) {
+        console.log(`[INFO] ${existing.file} was re-read moments ago; not reading again`);
+        return { answer: recentlyRecheckedAnswer(), question, entryFile: existing.file };
+      }
+      lastDisputed.set(existing.file, Date.now());
+    }
+
     const rederived = await engine.deriveAnswer(question, asGuidance(objection));
     if (!rederived) {
       return { answer: recheckFailedAnswer(), question, entryFile: previous.entryFile };
     }
+
+    recordSpend('dispute', rederived, question);
 
     let entryFile = previous.entryFile;
     try {

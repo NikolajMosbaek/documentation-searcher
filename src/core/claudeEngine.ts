@@ -88,6 +88,7 @@ export function createClaudeEngine(config: ClaudeEngineConfig): AnalysisEngine {
   return {
     async deriveAnswer(question: string, guidance?: string): Promise<Derivation | null> {
       let structured: unknown;
+      let costUsd = 0;
 
       try {
         for await (const message of query({
@@ -122,6 +123,7 @@ export function createClaudeEngine(config: ClaudeEngineConfig): AnalysisEngine {
             return null;
           }
           structured = message.structured_output;
+          costUsd = message.total_cost_usd;
         }
       } catch (error) {
         // An unreachable or unauthenticated engine is a miss, not an outage:
@@ -132,6 +134,7 @@ export function createClaudeEngine(config: ClaudeEngineConfig): AnalysisEngine {
 
       const derivation = toDerivation(structured, sources, question);
       if (!derivation) return null;
+      derivation.costUsd = costUsd;
 
       // A stored entry is served to every future asker, so a leak here is worse
       // than a miss. Discard rather than persist an answer that breaks the rules.

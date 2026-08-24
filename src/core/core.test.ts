@@ -20,6 +20,7 @@ function derivation(shortAnswer: string, fingerprint: string): Derivation {
     keywords: ['gift card', 'voucher'],
     derivedFrom: ['billing.ts'],
     fingerprint,
+    costUsd: 1.25,
     answer: { shortAnswer, behaviour: [], edgeCases: [], source: 'engine' },
   };
 }
@@ -394,5 +395,82 @@ test('an entry the judge rescued is still checked for staleness', async () => {
 
   assert.equal(calls(), 1, 'a rescued entry skipped the staleness check');
   assert.equal(answer.shortAnswer, text);
+  rmSync(directory, { recursive: true, force: true });
+});
+
+test('what reading the codebase cost is added up and can be read back', async () => {
+  const { directory, knowledgeBase } = base();
+  const sources = movableSources();
+  const { engine } = counting(() => derivation('Credit is added.', sources.current));
+  const core = createCore(knowledgeBase, engine, { sources });
+
+  assert.equal(core.spentUsd(), 0);
+
+  await core.ask(QUESTION, THREAD);
+  assert.equal(core.spentUsd(), 1.25);
+
+  // A stored answer is free, so the total must not move.
+  await core.ask(QUESTION, THREAD);
+  assert.equal(core.spentUsd(), 1.25);
+
+  // A refresh reads the codebase again, so it must.
+  sources.current = 'moved';
+  await core.ask(QUESTION, THREAD);
+  assert.equal(core.spentUsd(), 2.5);
+  rmSync(directory, { recursive: true, force: true });
+});
+
+test('an engine that reports no cost does not break the total', async () => {
+  const { directory, knowledgeBase } = base();
+  const sources = movableSources();
+  const core = createCore(knowledgeBase, {
+    async deriveAnswer() {
+      const { costUsd, ...free } = derivation('Credit is added.', sources.current);
+      void costUsd;
+      return free;
+    },
+  }, { sources });
+
+  await core.ask(QUESTION, THREAD);
+  assert.equal(core.spentUsd(), 0);
+  rmSync(directory, { recursive: true, force: true });
+});
+
+test('flagging the same answer repeatedly does not read the codebase each time', async () => {
+  const { directory, knowledgeBase } = base();
+  const sources = movableSources();
+  const { engine, calls } = counting(() => derivation('Credit is added.', sources.current));
+  const core = createCore(knowledgeBase, engine, { sources });
+
+  const first = await core.ask(QUESTION, THREAD);
+  const thread = {
+    threadId: 't',
+    turns: [{ question: QUESTION, resolved: QUESTION, answeredFrom: 'engine' as const, entryFile: first.entryFile }],
+  };
+
+  await core.ask('that is wrong', thread);
+  assert.equal(calls(), 2, 'the first flag should read the codebase');
+
+  const again = await core.ask('no, that is wrong', thread);
+  assert.equal(calls(), 2, 'the second flag read the codebase again');
+  assert.match(again.answer.shortAnswer, /very recently/);
+  rmSync(directory, { recursive: true, force: true });
+});
+
+test('once the cooldown has passed, flagging reads the codebase again', async () => {
+  const { directory, knowledgeBase } = base();
+  const sources = movableSources();
+  const { engine, calls } = counting(() => derivation('Credit is added.', sources.current));
+  const core = createCore(knowledgeBase, engine, { sources, disputeCooldownMs: 0 });
+
+  const first = await core.ask(QUESTION, THREAD);
+  const thread = {
+    threadId: 't',
+    turns: [{ question: QUESTION, resolved: QUESTION, answeredFrom: 'engine' as const, entryFile: first.entryFile }],
+  };
+
+  await core.ask('that is wrong', thread);
+  await core.ask('that is wrong', thread);
+  assert.equal(calls(), 3, 'a zero cooldown should not block anything');
   rmSync(directory, { recursive: true, force: true });
 });
