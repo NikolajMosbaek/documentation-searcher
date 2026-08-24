@@ -78,6 +78,7 @@ The soak runs one realistic session end to end against the real engine — a col
 | `DOCSEARCHER_SEED_AREAS` | `8` | How many areas seeding proposes. |
 | `DOCSEARCHER_SEED_PLAN` | `./seed-plan.md` | Where the seeding checklist lives. |
 | `PORT` | `3978` | The port the bot listens on. |
+| `NODE_ENV` | unset | Anything other than `production` accepts unauthenticated requests, for the Playground. Set it to `production` when deploying. |
 
 `disputeCooldownMs` is set in code rather than by environment, and defaults to five minutes — how long an entry is left alone after being re-read because someone disputed it.
 
@@ -147,6 +148,7 @@ src/core/claudeJudge.ts    weighs near-miss candidates; reads neither the codeba
 src/core/claudeProposer.ts reads the codebase and proposes what is worth documenting first
 
 src/core/*.test.ts         the suite -- run with `npm test`
+src/docs.test.ts           checks this README against the code, because nothing else does
 knowledge-base/            the entries themselves, as markdown
 docs/diary/                how this was built, in order, including what went wrong
 ```

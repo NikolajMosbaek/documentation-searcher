@@ -12,7 +12,7 @@
     "start": "node dist/index.js",
     "typecheck": "tsc --noEmit",
     "playground": "agentsplayground -e http://localhost:3978/api/messages -c emulator",
-    "test": "node --import tsx --test src/core/*.test.ts",
+    "test": "node --import tsx --test src/core/*.test.ts src/docs.test.ts",
     "seed": "tsx src/seed.ts",
     "soak": "tsx src/soak.ts"
   },
