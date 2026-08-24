@@ -474,3 +474,66 @@ test('once the cooldown has passed, flagging reads the codebase again', async ()
   assert.equal(calls(), 3, 'a zero cooldown should not block anything');
   rmSync(directory, { recursive: true, force: true });
 });
+
+test('spend is attributed to the conversation that caused it', async () => {
+  const { directory, knowledgeBase } = base();
+  const sources = movableSources();
+  const { engine } = counting(() => derivation('Credit is added.', sources.current));
+  const core = createCore(knowledgeBase, engine, { sources });
+
+  await core.ask('how do gift cards work?', { threadId: 'support-1', turns: [] });
+  await core.ask('when does a voucher expire?', { threadId: 'support-2', turns: [] });
+  await core.ask('what happens to an unused balance?', { threadId: 'support-2', turns: [] });
+
+  const spend = core.spendByThread();
+  assert.deepEqual(spend.map((t) => t.threadId), ['support-2', 'support-1'], 'not sorted by cost');
+  assert.equal(spend[0]?.reads, 2);
+  assert.equal(spend[0]?.costUsd, 2.5);
+  assert.equal(spend[1]?.reads, 1);
+  assert.equal(spend[1]?.costUsd, 1.25);
+  assert.equal(core.spentUsd(), 3.75, 'the parts do not add up to the whole');
+  rmSync(directory, { recursive: true, force: true });
+});
+
+test('a conversation answered entirely from the store never appears', async () => {
+  const { directory, knowledgeBase } = base();
+  const sources = movableSources();
+  knowledgeBase.add(derivation('Credit is added.', sources.current));
+  const core = createCore(knowledgeBase, { async deriveAnswer() { return null; } }, { sources });
+
+  await core.ask(QUESTION, { threadId: 'free-thread', turns: [] });
+  assert.deepEqual(core.spendByThread(), [], 'a free answer was recorded as spend');
+  rmSync(directory, { recursive: true, force: true });
+});
+
+test('a dispute is charged to the thread it was raised in', async () => {
+  const { directory, knowledgeBase } = base();
+  const sources = movableSources();
+  const { engine } = counting(() => derivation('Credit is added.', sources.current));
+  const core = createCore(knowledgeBase, engine, { sources });
+
+  const first = await core.ask(QUESTION, { threadId: 'asked-here', turns: [] });
+  await core.ask('that is wrong', {
+    threadId: 'disputed-there',
+    turns: [{ question: QUESTION, resolved: QUESTION, answeredFrom: 'engine', entryFile: first.entryFile }],
+  });
+
+  const spend = core.spendByThread();
+  assert.deepEqual(spend.map((t) => t.threadId).sort(), ['asked-here', 'disputed-there']);
+  assert.equal(spend.find((t) => t.threadId === 'disputed-there')?.reads, 1);
+  rmSync(directory, { recursive: true, force: true });
+});
+
+test('the breakdown cannot be mutated by whoever reads it', async () => {
+  const { directory, knowledgeBase } = base();
+  const sources = movableSources();
+  const { engine } = counting(() => derivation('Credit is added.', sources.current));
+  const core = createCore(knowledgeBase, engine, { sources });
+
+  await core.ask(QUESTION, THREAD);
+  const spend = core.spendByThread();
+  spend[0]!.costUsd = 999;
+
+  assert.equal(core.spendByThread()[0]?.costUsd, 1.25, 'the internal tally was writable from outside');
+  rmSync(directory, { recursive: true, force: true });
+});

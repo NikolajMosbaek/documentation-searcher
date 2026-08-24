@@ -59,10 +59,23 @@ export interface Exchange {
 /** Why the codebase was read. Every one of these costs about a dollar. */
 export type SpendReason = 'miss' | 'refresh' | 'dispute';
 
+/** What one conversation has cost, and how many reads of the codebase it took. */
+export interface ThreadSpend {
+  threadId: string;
+  costUsd: number;
+  reads: number;
+}
+
 export interface Core {
   ask(question: string, thread: ThreadContext): Promise<Exchange>;
   /** What this process has spent reading the codebase, as the engine reported it. */
   spentUsd(): number;
+  /**
+   * The same total, broken down by conversation, most expensive first.
+   * "What is this costing" is answerable without it; "who is it costing it on"
+   * is not, and that is the question an operator actually asks.
+   */
+  spendByThread(): ThreadSpend[];
 }
 
 /**
@@ -102,6 +115,7 @@ export function createCore(
   } = options;
 
   let spentUsd = 0;
+  const perThread = new Map<string, ThreadSpend>();
   const lastDisputed = new Map<string, number>();
 
   /**
@@ -109,11 +123,23 @@ export function createCore(
    * and nothing afterwards. Leaving that invisible makes the one number worth
    * watching the one number nobody can see.
    */
-  function recordSpend(reason: SpendReason, derivation: Derivation, question: string): void {
+  function recordSpend(
+    reason: SpendReason,
+    derivation: Derivation,
+    question: string,
+    threadId: string,
+  ): void {
     const cost = derivation.costUsd ?? 0;
     spentUsd += cost;
+
+    const thread = perThread.get(threadId) ?? { threadId, costUsd: 0, reads: 0 };
+    thread.costUsd += cost;
+    thread.reads += 1;
+    perThread.set(threadId, thread);
+
     console.log(
-      `[SPEND] $${cost.toFixed(4)} ${reason.padEnd(8)} (session $${spentUsd.toFixed(4)}) ${question}`,
+      `[SPEND] $${cost.toFixed(4)} ${reason.padEnd(8)} thread=${threadId} ` +
+        `(thread $${thread.costUsd.toFixed(4)}, session $${spentUsd.toFixed(4)}) ${question}`,
     );
   }
 
@@ -122,11 +148,17 @@ export function createCore(
       return spentUsd;
     },
 
+    spendByThread(): ThreadSpend[] {
+      return [...perThread.values()]
+        .map((thread) => ({ ...thread }))
+        .sort((a, b) => b.costUsd - a.costUsd);
+    },
+
     async ask(asked: string, thread: ThreadContext): Promise<Exchange> {
       // A dispute is not a new question -- it acts on the answer just given.
       const previous = thread.turns[thread.turns.length - 1];
       if (previous && looksLikeCorrection(asked)) {
-        return dispute(asked, previous);
+        return dispute(asked, previous, thread.threadId);
       }
 
       // The first question in a thread has nothing to lean on, so it is never
@@ -149,7 +181,7 @@ export function createCore(
         // until it has been derived again from what the code says now.
         const refreshed = await engine.deriveAnswer(question);
         if (refreshed) {
-          recordSpend('refresh', refreshed, question);
+          recordSpend('refresh', refreshed, question, thread.threadId);
           try {
             knowledgeBase.replace(known, refreshed);
           } catch (error) {
@@ -170,7 +202,7 @@ export function createCore(
 
       // Lazy population on miss: storing it is what makes the second asker free.
       // A failure to store is not a failure to answer, so it does not propagate.
-      recordSpend('miss', derived, question);
+      recordSpend('miss', derived, question, thread.threadId);
 
       let stored: string | undefined;
       try {
@@ -213,7 +245,7 @@ export function createCore(
    * pointer at what to re-read, and whatever the code says wins -- including
    * when the code says the original answer was right all along.
    */
-  async function dispute(objection: string, previous: Turn): Promise<Exchange> {
+  async function dispute(objection: string, previous: Turn, threadId: string): Promise<Exchange> {
     const question = previous.resolved;
     const existing = previous.entryFile ? knowledgeBase.byFile(previous.entryFile) : undefined;
 
@@ -231,7 +263,7 @@ export function createCore(
       return { answer: recheckFailedAnswer(), question, entryFile: previous.entryFile };
     }
 
-    recordSpend('dispute', rederived, question);
+    recordSpend('dispute', rederived, question, threadId);
 
     let entryFile = previous.entryFile;
     try {

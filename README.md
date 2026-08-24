@@ -18,7 +18,11 @@ Every question goes to the knowledge base first.
 4. **A question nothing covers** sends the bot to read the codebase, write what it learns back as a new entry, and answer from that. If the code genuinely does not cover the question, it says so and does not guess.
 5. **Saying an answer is wrong** in the thread makes the bot read the code again. The objection is a hint about where to look, never evidence — if the code supports the original answer, it says so rather than agreeing with you.
 
-Costs, measured: about **$0.60–$1.15 and a minute** the first time a question is answered, then about **a millisecond and nothing** for everyone after. That ratio is the whole product.
+Costs, measured: about **$0.60–$1.15 and a minute** the first time a question is answered, then about **a millisecond and nothing** for everyone after. That ratio is the whole product. Every read of the codebase is logged with what it cost and which conversation caused it:
+
+```
+[SPEND] $0.7176 miss     thread=19:a1b2c3 (thread $0.7176, session $2.2489) What happens when a trial ends?
+```
 
 ## Running it
 
@@ -161,7 +165,7 @@ Every `claude*.ts` sits behind an interface in the file above it, so no call sit
 - **Retrieval is lexical.** A second opinion covers the band where it ranks something without being sure, but a question sharing *no* vocabulary with the entry that answers it never ranks at all, so there is nothing to weigh. Closing that means embeddings, which mean storage — deferred until a fake genuinely cannot cut it.
 - **Follow-ups and near misses cost a few seconds.** Four to six, and four to five, which is most of what an asker waits for when the answer is already stored. Measured rather than guessed: a call doing the least possible work — no tools, one turn, one word out — still takes about 3.2 seconds and costs $0.0017, and a *smaller* model is slower. It is fixed overhead per call to the agent harness, not inference. A plain Messages API call would suit a text rewrite far better but needs its own credential, where the harness runs on whatever Claude Code is already authenticated with; that trade has been declined deliberately.
 - **Reading a large codebase costs more.** Both cost measurements are against this project's own source, which is small and heavily commented. `DOCSEARCHER_MAX_USD` is the only bound.
-- **Spend is logged, not attributed.** `[SPEND]` lines go to stdout with a running total; nothing records which thread or person caused them.
+- **Spend goes to stdout, and questions go with it.** Every read of the codebase logs its cost, its reason and the conversation that caused it, with a running total per thread and for the session — but it is a log line, not an audit trail, and it includes the question as asked. In a real deployment those questions are written by people, so treat the logs accordingly.
 
 ## Not built yet
 
