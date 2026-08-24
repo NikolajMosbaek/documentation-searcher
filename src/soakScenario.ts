@@ -22,6 +22,16 @@ export interface SoakScenario {
    * avoid, and the single most important thing the soak checks.
    */
   falseClaimMarker: string;
+  /**
+   * Only used when the soak starts from a knowledge base that already holds
+   * entries: a question those entries answer, which must be served for nothing.
+   *
+   * It guards the opposite failure from `falseClaimMarker`. That one checks the
+   * bot does not answer when it should not; this checks it still answers when
+   * it should, so a fix for over-matching cannot quietly turn into never
+   * matching.
+   */
+  alreadyCovered?: string;
 }
 
 /** Questions about this project, so `npm run soak` works here with no setup. */
@@ -31,6 +41,8 @@ export const DEFAULT_SCENARIO: SoakScenario = {
   followUp: 'and does it save what it finds?',
   falseClaim: 'that is wrong, it throws an error message at the user instead',
   falseClaimMarker: 'error message',
+  // Answered by the billing entries this project ships as examples.
+  alreadyCovered: 'what happens when a free trial expires?',
 };
 
 const FIELDS: Array<keyof SoakScenario> = [
@@ -69,6 +81,14 @@ export function parseScenario(raw: string, source = 'the scenario'): SoakScenari
       throw new Error(`${source} is missing a non-empty '${field}'`);
     }
     scenario[field] = value.trim();
+  }
+
+  const covered = record['alreadyCovered'];
+  if (covered !== undefined) {
+    if (typeof covered !== 'string' || !covered.trim()) {
+      throw new Error(`${source} has an 'alreadyCovered' that is not a non-empty string`);
+    }
+    scenario.alreadyCovered = covered.trim();
   }
 
   if (!scenario.falseClaim.toLowerCase().includes(scenario.falseClaimMarker.toLowerCase())) {

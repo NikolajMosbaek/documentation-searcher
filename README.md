@@ -86,6 +86,14 @@ Its built-in questions are about *this* project, so pointed anywhere else it nee
 DOCSEARCHER_CODEBASE=/path/to/a/codebase DOCSEARCHER_SOAK_SCENARIO=./soak.json npm run soak
 ```
 
+An optional `alreadyCovered` is a question the starting entries answer, used only when the soak starts from a seeded knowledge base:
+
+```sh
+DOCSEARCHER_CODEBASE=/path/to/a/codebase DOCSEARCHER_SOAK_SEED=./knowledge-base npm run soak
+```
+
+Starting seeded is the more realistic case and the more revealing one. A base holding a few *unrelated* entries behaves differently from an empty one, and running against an empty one is what hid an over-matching bug until iteration 17.
+
 `falseClaimMarker` is a phrase from `falseClaim` that must **not** appear once the bot has re-read the code. It is how the soak checks the most important thing it checks: that the bot does not agree with an objection the code does not support. A marker that does not appear in the claim is refused, because that check would then pass without testing anything.
 
 ## Configuration
@@ -101,6 +109,7 @@ DOCSEARCHER_CODEBASE=/path/to/a/codebase DOCSEARCHER_SOAK_SCENARIO=./soak.json n
 | `DOCSEARCHER_SEED_AREAS` | `8` | How many areas seeding proposes. |
 | `DOCSEARCHER_SEED_PLAN` | `./seed-plan.md` | Where the seeding checklist lives. |
 | `DOCSEARCHER_SOAK_SCENARIO` | unset | A JSON file of questions for the soak. Unset uses the built-in ones, which are about this project. |
+| `DOCSEARCHER_SOAK_SEED` | unset | A directory of entries to start the soak's knowledge base from. Unset starts it empty. |
 | `PORT` | `3978` | The port the bot listens on. |
 | `NODE_ENV` | unset | Anything other than `production` accepts unauthenticated requests, for the Playground. Set it to `production` when deploying. |
 
@@ -183,6 +192,7 @@ Every `claude*.ts` sits behind an interface in the file above it, so no call sit
 ## Known limits
 
 - **It has never run inside Teams.** Only against the protocol. That needs a tenant.
+- **The margin on a small knowledge base is thin.** Against three unrelated entries, questions those entries plainly do not answer score 0.93 to 0.98 against a bar of 1.0. They are stopped by the second bar — how much of the question the entry covers — rather than by the score. Both bars are load-bearing, and neither has been re-tuned against a knowledge base of tens of entries.
 - **Retrieval is lexical.** A second opinion covers the band where it ranks something without being sure, but a question sharing *no* vocabulary with the entry that answers it never ranks at all, so there is nothing to weigh. Closing that means embeddings, which mean storage — deferred until a fake genuinely cannot cut it.
 - **Follow-ups and near misses cost a few seconds.** Four to six, and four to five, which is most of what an asker waits for when the answer is already stored. Measured rather than guessed: a call doing the least possible work — no tools, one turn, one word out — still takes about 3.2 seconds and costs $0.0017, and a *smaller* model is slower. It is fixed overhead per call to the agent harness, not inference. A plain Messages API call would suit a text rewrite far better but needs its own credential, where the harness runs on whatever Claude Code is already authenticated with; that trade has been declined deliberately.
 - **Reading a large codebase costs more.** Both cost measurements are against this project's own source, which is small and heavily commented. `DOCSEARCHER_MAX_USD` is the only bound.

@@ -48,3 +48,23 @@ test('the marker is matched case-insensitively against the claim', () => {
   const shouty = { ...VALID, falseClaimMarker: 'STRAIGHT AWAY' };
   assert.equal(parseScenario(JSON.stringify(shouty)).falseClaimMarker, 'STRAIGHT AWAY');
 });
+
+test('alreadyCovered is optional, but must be usable if given', () => {
+  assert.equal(parseScenario(JSON.stringify(VALID)).alreadyCovered, undefined);
+  assert.equal(
+    parseScenario(JSON.stringify({ ...VALID, alreadyCovered: '  what happens at renewal?  ' })).alreadyCovered,
+    'what happens at renewal?',
+  );
+
+  for (const bad of ['', '   ', 42, null]) {
+    assert.throws(
+      () => parseScenario(JSON.stringify({ ...VALID, alreadyCovered: bad })),
+      /alreadyCovered/,
+      JSON.stringify(bad),
+    );
+  }
+});
+
+test('the built-in scenario names a question its own example entries answer', () => {
+  assert.equal(typeof DEFAULT_SCENARIO.alreadyCovered, 'string');
+});

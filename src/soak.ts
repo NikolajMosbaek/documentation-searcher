@@ -1,4 +1,4 @@
-import { appendFileSync, cpSync, mkdirSync, mkdtempSync, readFileSync } from 'node:fs';
+import { appendFileSync, cpSync, existsSync, mkdirSync, mkdtempSync, readFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import {
@@ -64,6 +64,19 @@ const knowledge = join(workspace, 'knowledge-base');
 cpSync(CODEBASE, code, { recursive: true, filter: (source) => !source.includes('node_modules') });
 mkdirSync(knowledge, { recursive: true });
 
+// Every soak until now began with nothing stored. That is the easiest state to
+// reason about and the least like a running deployment -- and it is exactly the
+// state that hid a serious over-matching bug, because a knowledge base holding
+// a few unrelated entries behaves differently from one holding none.
+const SEED = process.env.DOCSEARCHER_SOAK_SEED;
+if (SEED) {
+  if (!existsSync(SEED)) {
+    console.error(`No such directory to seed from: ${SEED}`);
+    process.exit(2);
+  }
+  cpSync(SEED, knowledge, { recursive: true });
+}
+
 const knowledgeBase = createKnowledgeBase(knowledge);
 const sources = createSourceIndex(code);
 const core = createCore(
@@ -96,12 +109,18 @@ async function turn(asked: string) {
 }
 
 console.log(`Soaking against a copy of ${CODEBASE}`);
+console.log(`Knowledge base starts ${SEED ? `seeded from ${SEED}` : 'empty'}`);
 console.log(`Questions from ${SCENARIO_FILE ?? 'the built-in scenario, which is about this project'}`);
 console.log('This costs a few dollars and takes a few minutes.\n');
 
+const seeded = knowledgeBase.size;
+if (seeded > 0) console.log(`(${seeded} entries already stored)\n`);
+
+// A question about this codebase, against entries about something else. If a
+// stored answer is served here, the bot is answering a question nobody asked.
 const cold = await turn(QUESTION);
-check('a question nothing covers is derived', cold.answer.source === 'engine', cold.answer.source);
-check('and stored', knowledgeBase.size === 1 && Boolean(cold.entryFile));
+check('a question the stored entries do not cover is derived', cold.answer.source === 'engine', cold.answer.source);
+check('and stored', knowledgeBase.size === seeded + 1 && Boolean(cold.entryFile));
 check('and it cost real money', cold.paid > 0, `$${cold.paid.toFixed(4)}`);
 
 const repeat = await turn(QUESTION);
@@ -115,7 +134,7 @@ check('a follow-up is made to stand alone', followUp.question !== scenario.follo
 
 const disputed = await turn(scenario.falseClaim);
 check('a dispute re-reads the code', disputed.answer.source === 'corrected', disputed.answer.source);
-check('the dispute did not duplicate the entry', knowledgeBase.size === 1, `entries=${knowledgeBase.size}`);
+check('the dispute did not duplicate the entry', knowledgeBase.size === seeded + 1, `entries=${knowledgeBase.size}`);
 check(
   'a false claim is not adopted',
   !disputed.answer.shortAnswer.toLowerCase().includes(scenario.falseClaimMarker.toLowerCase()),
@@ -140,10 +159,18 @@ check('staleness is detectable', sources.fingerprint(stored.derivedFrom) !== sto
 
 const refreshed = await turn(QUESTION);
 check('moved code triggers a paid refresh', refreshed.paid > 0, `$${refreshed.paid.toFixed(4)}`);
-check('the refresh did not duplicate the entry', knowledgeBase.size === 1, `entries=${knowledgeBase.size}`);
+check('the refresh did not duplicate the entry', knowledgeBase.size === seeded + 1, `entries=${knowledgeBase.size}`);
 
 const settled = await turn(QUESTION);
 check('after refreshing it is free again', settled.paid === 0 && settled.answer.source === 'knowledge-base');
+
+// The other direction: a pre-existing entry must still be reachable. A fix for
+// answering too eagerly is easy to overshoot into never answering at all.
+if (seeded > 0 && scenario.alreadyCovered) {
+  const stored = await turn(scenario.alreadyCovered);
+  check('a question the stored entries do cover is served for nothing', stored.paid === 0, `$${stored.paid.toFixed(4)}`);
+  check('and comes from the knowledge base', stored.answer.source === 'knowledge-base', stored.answer.source);
+}
 
 console.log(`\nsession spend: $${core.spentUsd().toFixed(4)} across ${knowledgeBase.size} entries`);
 console.log(`workspace kept for inspection: ${workspace}`);
