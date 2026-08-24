@@ -1,0 +1,36 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+
+    strategy:
+      fail-fast: false
+      matrix:
+        # The floor the package declares, and current.
+        node: ['20.11', '22']
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: ${{ matrix.node }}
+          cache: npm
+
+      - run: npm ci
+
+      # Covers the tests too, which the build deliberately does not emit.
+      - run: npm run typecheck
+
+      # No ANTHROPIC_API_KEY, no Claude Code, no network access to either.
+      # If the suite ever needs one, it fails here rather than quietly in
+      # someone's terminal where the credentials happen to exist.
+      - run: npm test
+
+      - run: npm run build
