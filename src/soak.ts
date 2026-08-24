@@ -1,4 +1,4 @@
-import { appendFileSync, cpSync, mkdirSync, mkdtempSync } from 'node:fs';
+import { appendFileSync, cpSync, mkdirSync, mkdtempSync, readFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import {
@@ -11,6 +11,7 @@ import {
   formatAnswer,
   InMemoryThreadStore,
 } from './core/index.js';
+import { DEFAULT_SCENARIO, parseScenario, type SoakScenario } from './soakScenario.js';
 
 /**
  * One realistic session, end to end, against a real codebase.
@@ -33,7 +34,21 @@ if (!CODEBASE) {
   process.exit(2);
 }
 
-const QUESTION = 'What happens when someone asks a question the bot has no stored answer for?';
+// The built-in questions are about this project. Pointed at anything else, the
+// soak needs questions that codebase can actually answer, or every turn misses
+// and the checks fail for reasons that are not defects.
+const SCENARIO_FILE = process.env.DOCSEARCHER_SOAK_SCENARIO;
+let scenario: SoakScenario;
+try {
+  scenario = SCENARIO_FILE
+    ? parseScenario(readFileSync(SCENARIO_FILE, 'utf8'), SCENARIO_FILE)
+    : DEFAULT_SCENARIO;
+} catch (error) {
+  console.error(error instanceof Error ? error.message : String(error));
+  process.exit(2);
+}
+
+const QUESTION = scenario.question;
 
 let failures = 0;
 function check(name: string, ok: boolean, detail = ''): void {
@@ -80,7 +95,9 @@ async function turn(asked: string) {
   return { ...exchange, paid };
 }
 
-console.log(`Soaking against a copy of ${CODEBASE}\nThis costs a few dollars and takes a few minutes.\n`);
+console.log(`Soaking against a copy of ${CODEBASE}`);
+console.log(`Questions from ${SCENARIO_FILE ?? 'the built-in scenario, which is about this project'}`);
+console.log('This costs a few dollars and takes a few minutes.\n');
 
 const cold = await turn(QUESTION);
 check('a question nothing covers is derived', cold.answer.source === 'engine', cold.answer.source);
@@ -90,17 +107,23 @@ check('and it cost real money', cold.paid > 0, `$${cold.paid.toFixed(4)}`);
 const repeat = await turn(QUESTION);
 check('the same question is free', repeat.answer.source === 'knowledge-base' && repeat.paid === 0);
 
-const rephrased = await turn('if nothing is on file about my question, what do I get back?');
+const rephrased = await turn(scenario.rephrasing);
 check('a rephrasing does not pay again', rephrased.paid === 0, `$${rephrased.paid.toFixed(4)}`);
 
-const followUp = await turn('and does it save what it finds?');
-check('a follow-up is made to stand alone', followUp.question !== 'and does it save what it finds?', followUp.question);
+const followUp = await turn(scenario.followUp);
+check('a follow-up is made to stand alone', followUp.question !== scenario.followUp, followUp.question);
 
-const disputed = await turn('that is wrong, it throws an error message at the user instead');
+const disputed = await turn(scenario.falseClaim);
 check('a dispute re-reads the code', disputed.answer.source === 'corrected', disputed.answer.source);
 check('the dispute did not duplicate the entry', knowledgeBase.size === 1, `entries=${knowledgeBase.size}`);
-check('a false claim is not adopted', !/error message/i.test(disputed.answer.shortAnswer));
+check(
+  'a false claim is not adopted',
+  !disputed.answer.shortAnswer.toLowerCase().includes(scenario.falseClaimMarker.toLowerCase()),
+  scenario.falseClaimMarker,
+);
 
+// Generic on purpose: any second objection exercises the cooldown, and it
+// does not have to mean anything about the codebase under test.
 const again = await turn('no, that is wrong too');
 check('a repeat dispute does not pay again', again.paid === 0, `$${again.paid.toFixed(4)}`);
 check(

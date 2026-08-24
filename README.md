@@ -69,6 +69,24 @@ DOCSEARCHER_CODEBASE=/path/to/a/codebase npm run soak
 
 The soak runs one realistic session end to end against the real engine — a cold question, the same question again, a rephrasing, a follow-up, a dispute with a false claim, a repeat dispute, a source file edited underneath it, and the refresh that follows. It costs two to three dollars and takes a few minutes, which is why it is not part of `npm test`. It copies the codebase first, so the original is never modified.
 
+Its built-in questions are about *this* project, so pointed anywhere else it needs questions the codebase can actually answer:
+
+```json
+{
+  "question": "What happens when a customer cancels partway through a month?",
+  "rephrasing": "if someone stops paying mid-cycle, what do they keep?",
+  "followUp": "and are they refunded?",
+  "falseClaim": "that is wrong, they lose access straight away",
+  "falseClaimMarker": "straight away"
+}
+```
+
+```sh
+DOCSEARCHER_CODEBASE=/path/to/a/codebase DOCSEARCHER_SOAK_SCENARIO=./soak.json npm run soak
+```
+
+`falseClaimMarker` is a phrase from `falseClaim` that must **not** appear once the bot has re-read the code. It is how the soak checks the most important thing it checks: that the bot does not agree with an objection the code does not support. A marker that does not appear in the claim is refused, because that check would then pass without testing anything.
+
 ## Configuration
 
 | Variable | Default | What it does |
@@ -81,6 +99,7 @@ The soak runs one realistic session end to end against the real engine — a col
 | `DOCSEARCHER_JUDGE_MODEL` | falls back to `DOCSEARCHER_MODEL` | The model that weighs near-miss candidates. |
 | `DOCSEARCHER_SEED_AREAS` | `8` | How many areas seeding proposes. |
 | `DOCSEARCHER_SEED_PLAN` | `./seed-plan.md` | Where the seeding checklist lives. |
+| `DOCSEARCHER_SOAK_SCENARIO` | unset | A JSON file of questions for the soak. Unset uses the built-in ones, which are about this project. |
 | `PORT` | `3978` | The port the bot listens on. |
 | `NODE_ENV` | unset | Anything other than `production` accepts unauthenticated requests, for the Playground. Set it to `production` when deploying. |
 
@@ -132,6 +151,7 @@ The core knows nothing about Teams; the adapter decides nothing about answers. T
 src/index.ts               the entire Teams adapter: resolves a thread id, calls the core, sends what it returns
 src/seed.ts                the seeding command -- the one thing here a developer runs rather than asks
 src/soak.ts                one realistic session against a real codebase
+src/soakScenario.ts        what the soak asks, and the check that its questions are worth asking
 
 src/core/index.ts          createCore(): ask(question, thread) -> Exchange. Knows nothing about Teams
 src/core/answer.ts         the Answer shape, the markdown formatter, and the no-code-references guard
