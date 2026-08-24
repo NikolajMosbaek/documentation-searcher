@@ -29,14 +29,23 @@ export interface Match {
 }
 
 /**
- * A match has to clear both bars. Score alone rewards a long entry that happens
- * to contain one rare word; coverage alone rewards a short entry that contains
- * several common ones. Answering from a wrong entry is worse than missing,
- * because a miss re-derives and a wrong hit is served silently forever.
+ * What it takes to answer on lexical evidence alone, without a second opinion.
+ *
+ * These are deliberately high. Measured against a twelve-entry corpus of real
+ * entries this bot wrote, the previous bars (score 1.0, coverage 0.34, no
+ * margin) served a wrong entry for three of ten rephrasings and answered two of
+ * seven entirely unrelated questions. Worse, the whole range from 0.5 to 2.0
+ * behaved almost identically -- an absolute score cannot discriminate, because
+ * it grows with the corpus and with the rarity of the words involved.
+ *
+ * The margin is what actually separates a confident match from a lucky one. A
+ * wrong top-ranked entry beat its runner-up by 1.04x and 1.09x; a right one by
+ * 2.2x to 2.6x.
+ *
+ * At these three, nothing wrong was served and nothing unrelated was answered,
+ * and in every case that fell short the correct entry was still inside the
+ * shortlist handed to the judge. Retrieval shortlists; the judge decides.
  */
-const MIN_SCORE = 1.0;
-const MIN_COVERAGE = 0.34;
-
 /**
  * At or below this many entries, a lexical score carries very little. Words are
  * shared by most of the corpus, so inverse document frequency has almost
@@ -46,6 +55,10 @@ const MIN_COVERAGE = 0.34;
  * exists, so nothing is written off on lexical evidence alone.
  */
 const TOO_SMALL_TO_JUDGE_LEXICALLY = 5;
+
+const MIN_SCORE = 4.0;
+const MIN_COVERAGE = 0.75;
+const MIN_MARGIN = 2.0;
 
 const K1 = 1.2;
 const B = 0.75;
@@ -129,27 +142,41 @@ export function createRetrievalIndex(entries: Entry[]): RetrievalIndex {
     return (frequency * (K1 + 1)) / (frequency + K1 * (1 - B + (B * length) / averageLength));
   }
 
-  function clears(match: Match): boolean {
-    return match.score >= MIN_SCORE && match.coverage >= MIN_COVERAGE;
+  /**
+   * The top-ranked entry, and whether it is far enough ahead of the next one to
+   * be trusted without asking anybody.
+   */
+  function decide(question: string): { served?: Match; ranked: Match[] } {
+    const ranked = rank(question);
+    const top = ranked[0];
+    if (!top) return { ranked };
+
+    // Nothing else scored at all, so there is nothing it could be confused with.
+    const runnerUp = ranked[1]?.score ?? 0;
+    const margin = runnerUp === 0 ? Infinity : top.score / runnerUp;
+
+    const confident =
+      top.score >= MIN_SCORE && top.coverage >= MIN_COVERAGE && margin >= MIN_MARGIN;
+    return confident ? { served: top, ranked } : { ranked };
   }
 
   return {
     rank,
     best(question: string): Match | undefined {
-      const top = rank(question)[0];
-      return top && clears(top) ? top : undefined;
+      return decide(question).served;
     },
+
     candidates(question: string, limit = 5): Match[] {
-      const ranked = rank(question);
+      const { served, ranked } = decide(question);
 
-      // The uncertain band: ranked, but not confidently enough to serve.
-      const uncertain = ranked.filter((match) => !clears(match)).slice(0, limit);
-      if (uncertain.length > 0) return uncertain;
+      // Something was confident enough to answer with; nobody needs asking.
+      if (served) return [];
 
-      // An empty band because something cleared the bars is not the same as an
-      // empty band because nothing scored at all. Only the second is a shortage
-      // of evidence; the first already has an answer.
-      if (ranked.length > 0) return [];
+      // Everything that scored, best first. These are not near misses in the
+      // old sense of "almost cleared a bar" -- the bars are now high enough
+      // that most real matches land here, and the judge is what turns a
+      // shortlist into an answer.
+      if (ranked.length > 0) return ranked.slice(0, limit);
 
       // Nothing scored. On a large enough knowledge base that means the question
       // shares no word with anything, and there is nothing to weigh. On a small

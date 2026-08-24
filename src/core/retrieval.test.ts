@@ -35,11 +35,22 @@ test('function words are dropped so they cannot match everything', () => {
   assert.deepEqual(tokenize('what happens when it is on the'), []);
 });
 
-test('a question phrased differently from the entry still finds it', () => {
-  // None of these repeat the entry's own wording.
-  assert.equal(index.best('am I charged when the free period finishes?')?.entry, TRIAL);
-  assert.equal(index.best('if I stop my subscription mid-period do I keep access?')?.entry, CANCEL);
-  assert.equal(index.best('my account is past due, what now?')?.entry, PAYMENT);
+test('a question phrased differently from the entry reaches it, for the judge to confirm', () => {
+  // These do not repeat the entry's wording, so they are not served on lexical
+  // evidence alone -- they are shortlisted, and the judge decides. What matters
+  // is that the right entry is in the shortlist at all.
+  for (const [question, expected] of [
+    ['am I charged when the free period finishes?', TRIAL],
+    ['if I stop my subscription mid-period do I keep access?', CANCEL],
+    ['my account is past due, what now?', PAYMENT],
+  ] as const) {
+    const shortlist = index.candidates(question);
+    const served = index.best(question);
+    const reachable = served === undefined
+      ? shortlist.some((match) => match.entry === expected)
+      : served.entry === expected;
+    assert.ok(reachable, `${question} could not reach ${expected.file}`);
+  }
 });
 
 test('a question about something absent misses rather than guessing', () => {
@@ -102,4 +113,26 @@ test('on a larger knowledge base an unrelated question is written off', () => {
 
 test('the band is capped so a judge is never handed the whole corpus', () => {
   assert.equal(index.candidates('cancel trial payment refund declined', 1).length <= 1, true);
+});
+
+test('an entry barely ahead of the next one is not served on its own', () => {
+  // Two entries about refunds for different reasons, plus one unrelated so that
+  // "refund" is not in every entry and therefore still carries weight. Whichever
+  // ranks first for a general refund question does so by a hair.
+  const cancelled = entry('a.md', 'title: Refunding a cancelled subscription\nkeywords: refund, cancelled',
+    '## Short answer\nA cancelled subscription is refunded when it is cancelled within fourteen days.');
+  const duplicate = entry('b.md', 'title: Refunding a duplicate charge\nkeywords: refund, duplicate',
+    '## Short answer\nA duplicate charge is refunded in full once it is reported.');
+  const unrelated = entry('c.md', 'title: When a free trial ends\nkeywords: trial, expiry',
+    '## Short answer\nA trial converts to a paid subscription automatically unless cancelled.');
+  const close = createRetrievalIndex([cancelled, duplicate, unrelated]);
+
+  const ranked = close.rank('when is a refund given?');
+  assert.ok(ranked.length >= 2, 'expected both refund entries to rank');
+
+  const margin = ranked[0]!.score / ranked[1]!.score;
+  assert.ok(margin < 1.1, `margin was ${margin.toFixed(2)}, so this is not testing a close call`);
+
+  assert.equal(close.best('when is a refund given?'), undefined, 'a coin toss was served as an answer');
+  assert.ok(close.candidates('when is a refund given?').length >= 2, 'both should go to the judge');
 });
