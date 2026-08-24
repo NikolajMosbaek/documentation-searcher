@@ -1,6 +1,7 @@
 import { query } from '@anthropic-ai/claude-agent-sdk';
 import { findCodeReferences, type Answer } from './answer.js';
 import type { AnalysisEngine, Derivation } from './engine.js';
+import { createSourceIndex, type SourceIndex } from './sourceIndex.js';
 
 export interface ClaudeEngineConfig {
   /** Absolute path to the codebase this deployment answers questions about. */
@@ -82,6 +83,8 @@ const DERIVATION_SCHEMA: Record<string, unknown> = {
 };
 
 export function createClaudeEngine(config: ClaudeEngineConfig): AnalysisEngine {
+  const sources = createSourceIndex(config.codebase);
+
   return {
     async deriveAnswer(question: string): Promise<Derivation | null> {
       let structured: unknown;
@@ -127,7 +130,7 @@ export function createClaudeEngine(config: ClaudeEngineConfig): AnalysisEngine {
         return null;
       }
 
-      const derivation = toDerivation(structured);
+      const derivation = toDerivation(structured, sources, question);
       if (!derivation) return null;
 
       // A stored entry is served to every future asker, so a leak here is worse
@@ -146,7 +149,7 @@ export function createClaudeEngine(config: ClaudeEngineConfig): AnalysisEngine {
 }
 
 /** `structured_output` is typed `unknown`, so nothing about it is assumed. */
-function toDerivation(value: unknown): Derivation | null {
+function toDerivation(value: unknown, sources: SourceIndex, question: string): Derivation | null {
   if (typeof value !== 'object' || value === null) return null;
   const raw = value as Record<string, unknown>;
 
@@ -163,11 +166,16 @@ function toDerivation(value: unknown): Derivation | null {
     source: 'engine',
   };
 
+  const derivedFrom = asStringArray(raw['derivedFrom']);
+
   return {
     answer,
+    question,
     title,
     keywords: asStringArray(raw['keywords']).map((keyword) => keyword.toLowerCase()),
-    derivedFrom: asStringArray(raw['derivedFrom']),
+    derivedFrom,
+    // Taken now, against the same working tree the answer was just read from.
+    fingerprint: sources.fingerprint(derivedFrom),
   };
 }
 

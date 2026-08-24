@@ -4,6 +4,7 @@ import {
   createClaudeEngine,
   createCore,
   createKnowledgeBase,
+  createSourceIndex,
   formatAnswer,
   InMemoryThreadStore,
   unavailableEngine,
@@ -35,7 +36,11 @@ console.log(
     : '[INFO] no codebase configured: set DOCSEARCHER_CODEBASE to fill misses',
 );
 
-const core = createCore(knowledgeBase, engine);
+// Without a codebase there is nothing to compare an entry against, so stored
+// answers are served as written rather than guessed about.
+const sources = CODEBASE ? createSourceIndex(CODEBASE) : undefined;
+
+const core = createCore(knowledgeBase, engine, sources);
 const threads = new InMemoryThreadStore();
 
 // The Microsoft 365 Agents Playground sends unauthenticated requests, which the

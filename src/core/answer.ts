@@ -11,11 +11,23 @@ export interface Answer {
   /** Conditions and exceptions that change the behaviour. */
   edgeCases: string[];
   /** Where this answer came from. Diagnostic only -- never shown to the asker. */
-  source: 'knowledge-base' | 'engine' | 'miss';
+  source: 'knowledge-base' | 'engine' | 'stale' | 'miss';
 }
 
 export function formatAnswer(answer: Answer): string {
-  const lines: string[] = ['**Short answer**', answer.shortAnswer];
+  const lines: string[] = [];
+
+  // The PRD's promise is that nobody is handed a *silently* outdated answer.
+  // When the code moved and the answer could not be re-derived, saying so is
+  // what keeps that promise -- withholding a probably-good answer does not.
+  if (answer.source === 'stale') {
+    lines.push(
+      '_The code behind this answer has changed since it was written, and it could not be checked again just now. Treat it as possibly out of date._',
+      '',
+    );
+  }
+
+  lines.push('**Short answer**', answer.shortAnswer);
 
   if (answer.behaviour.length > 0) {
     lines.push('', '**What happens**');

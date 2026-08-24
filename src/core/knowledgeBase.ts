@@ -6,9 +6,13 @@ import type { Derivation } from './engine.js';
 export interface Entry {
   file: string;
   title: string;
+  /** The question that produced this entry, if a machine wrote it. */
+  question: string;
   keywords: string[];
   /** Paths this entry was derived from, when a machine wrote it. Metadata only. */
   derivedFrom: string[];
+  /** What those paths hashed to when the entry was written. Empty if hand-written. */
+  fingerprint: string;
   answer: Answer;
 }
 
@@ -36,6 +40,8 @@ export function parseEntry(file: string, raw: string): Entry {
 
   const keywords = splitList(fields.get('keywords')).map((keyword) => keyword.toLowerCase());
   const derivedFrom = splitList(fields.get('derived-from'));
+  const fingerprint = fields.get('fingerprint') ?? '';
+  const question = fields.get('question') ?? '';
 
   const sections = splitSections(body);
   const shortAnswer = sections.get('short answer');
@@ -48,7 +54,7 @@ export function parseEntry(file: string, raw: string): Entry {
     source: 'knowledge-base',
   };
 
-  return { file, title, keywords, derivedFrom, answer };
+  return { file, title, question, keywords, derivedFrom, fingerprint, answer };
 }
 
 function splitList(value: string | undefined): string[] {
@@ -84,13 +90,15 @@ function stripListMarker(line: string): string {
  * `parseEntry` unchanged, so the two are edited together or not at all.
  */
 export function serializeEntry(derivation: Derivation): string {
-  const { answer, title, keywords, derivedFrom } = derivation;
+  const { answer, title, question, keywords, derivedFrom, fingerprint } = derivation;
 
   const lines = [
     '---',
     `title: ${oneLine(title)}`,
+    `question: ${oneLine(question)}`,
     `keywords: ${keywords.map(commaFree).filter(Boolean).join(', ')}`,
     `derived-from: ${derivedFrom.map(commaFree).filter(Boolean).join(', ')}`,
+    `fingerprint: ${fingerprint}`,
     '---',
     '',
     '## Short answer',
@@ -153,11 +161,27 @@ export function loadKnowledgeBase(directory: string): Entry[] {
   return entries;
 }
 
+/** Punctuation and spacing must not decide whether a question is the same one. */
+export function normalizeQuestion(question: string): string {
+  return question.toLowerCase().replace(/[^a-z0-9]+/g, ' ').trim();
+}
+
 /**
  * Retrieval, in name only. A keyword count is not retrieval and is not meant to
  * be -- it is a placeholder holding the seam open until the real lookup arrives.
+ *
+ * The one thing it does guarantee is that asking the same question twice finds
+ * the entry the first asking paid for. Keywords cannot promise that: they are
+ * the model's words for the behaviour, not the asker's words for the question,
+ * and the two routinely fail to overlap.
  */
 export function findEntry(entries: Entry[], question: string): Entry | undefined {
+  const normalized = normalizeQuestion(question);
+  const sameQuestion = entries.find(
+    (entry) => entry.question && normalizeQuestion(entry.question) === normalized,
+  );
+  if (sameQuestion) return sameQuestion;
+
   const asked = question.toLowerCase();
 
   const scored = entries
@@ -180,6 +204,12 @@ export interface KnowledgeBase {
   find(question: string): Entry | undefined;
   /** Store a derivation and make it findable immediately. */
   add(derivation: Derivation): Entry;
+  /**
+   * Refresh an entry in place after the code it described changed. Same file, so
+   * the diff a developer reviews shows what moved rather than an unrelated pair
+   * of additions and deletions.
+   */
+  replace(entry: Entry, derivation: Derivation): Entry;
   readonly size: number;
 }
 
@@ -195,20 +225,36 @@ export function createKnowledgeBase(directory: string): KnowledgeBase {
       const file = availableFile(directory, slugify(derivation.title));
       writeFileSync(join(directory, file), serializeEntry(derivation), 'utf8');
 
-      const entry: Entry = {
-        file,
-        title: derivation.title,
-        keywords: derivation.keywords,
-        derivedFrom: derivation.derivedFrom,
-        answer: { ...derivation.answer, source: 'knowledge-base' },
-      };
+      const entry = toEntry(file, derivation);
       entries.push(entry);
       return entry;
+    },
+
+    replace(existing: Entry, derivation: Derivation): Entry {
+      writeFileSync(join(directory, existing.file), serializeEntry(derivation), 'utf8');
+
+      const refreshed = toEntry(existing.file, derivation);
+      const at = entries.indexOf(existing);
+      if (at === -1) entries.push(refreshed);
+      else entries[at] = refreshed;
+      return refreshed;
     },
 
     get size(): number {
       return entries.length;
     },
+  };
+}
+
+function toEntry(file: string, derivation: Derivation): Entry {
+  return {
+    file,
+    title: derivation.title,
+    question: derivation.question,
+    keywords: derivation.keywords,
+    derivedFrom: derivation.derivedFrom,
+    fingerprint: derivation.fingerprint,
+    answer: { ...derivation.answer, source: 'knowledge-base' },
   };
 }
 
