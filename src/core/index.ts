@@ -15,6 +15,8 @@ export {
   slugify,
 } from './knowledgeBase.js';
 export type { Entry, KnowledgeBase } from './knowledgeBase.js';
+export { createRetrievalIndex, tokenize } from './retrieval.js';
+export type { Match, RetrievalIndex } from './retrieval.js';
 export { createSourceIndex } from './sourceIndex.js';
 export type { SourceIndex } from './sourceIndex.js';
 export { unavailableEngine } from './engine.js';

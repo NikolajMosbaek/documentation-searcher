@@ -4,6 +4,12 @@ Ask a codebase about its own behaviour from Microsoft Teams. See `PRD.md` for wh
 
 ## Where this is right now
 
+**Iteration 4: retrieval that retrieves.** Lookup is now BM25 over the whole of each entry — title, stored question, keywords, and answer text — rather than a substring count against curated keywords. A question phrased differently from the entry finds it, provided the two share vocabulary. There is still a guarantee underneath: the exact question that paid for an entry always finds it again.
+
+A match must clear both a score and a coverage bar. Missing is the safe failure — it costs a re-derivation — while a wrong hit is served silently to everyone who asks next, so the bars are set to prefer missing.
+
+`npm test` now runs the suite that makes any of this safe to change.
+
 **Iteration 3: verify on read.** The PRD's mechanism is now complete. A question is answered from the knowledge base when an entry covers it *and* the code that entry describes has not moved. When the code has moved, the entry is derived again and refreshed before anyone is answered from it. When no entry covers the question at all, the bot reads the codebase, writes what it learns back, and answers from that.
 
 Every machine-written entry records the files it came from and a content hash of those files. On each read the hash is recomputed: same hash, serve it; different hash, re-derive it. No CI hooks, commit hooks, or scheduled rebuilds, as the PRD requires — the check happens because someone asked.
@@ -17,6 +23,7 @@ Measured on real questions: 40–55 seconds and roughly one US dollar to derive 
 ```sh
 npm install
 DOCSEARCHER_CODEBASE=/path/to/the/codebase npm run dev   # starts the agent on port 3978
+npm test                                                 # the suite, no network or credentials needed
 ```
 
 Without `DOCSEARCHER_CODEBASE` the bot still runs and still answers from the knowledge base, but it cannot fill a miss — it says so once at startup.
@@ -51,6 +58,8 @@ src/core/knowledgeBase.ts  reads, writes and parses entry files; keyword lookup 
 src/core/engine.ts    the AnalysisEngine interface, the Derivation it returns, and the stub
 src/core/claudeEngine.ts   the real engine: reads the codebase read-only, returns a structured answer
 src/core/sourceIndex.ts    content-hashes the files an answer came from, so staleness is detectable
+src/core/retrieval.ts      BM25 over the entries; in-memory, rebuilt whenever one is written
+src/core/*.test.ts         the suite -- run with `npm test`
 src/core/threadContext.ts  in-memory conversation memory
 knowledge-base/       the entries themselves, as markdown
 ```
@@ -90,4 +99,4 @@ A malformed entry is skipped with a warning rather than taking down the whole kn
 
 Guided seeding, in-thread correction, follow-up questions actually using thread context, and real Teams registration.
 
-Real retrieval is the conspicuous gap. Asking the *same* question twice is guaranteed to hit, but asking the same thing in different words still misses and pays for a fresh derivation of an answer the knowledge base already holds — at roughly a dollar a time, that is now the most expensive weakness left.
+Retrieval is lexical, so the gap that remains is semantic: a question sharing no vocabulary with an entry will not find it, however plainly it means the same thing. Asking about "cancelling halfway through the month" does not reach an entry written about "mid-period", and at roughly a dollar per derivation that is the most expensive weakness left. Closing it means either a re-ranking pass by a cheap model over the top few candidates, or embeddings — and embeddings mean storage, which the constitution defers until a fake genuinely cannot cut it.

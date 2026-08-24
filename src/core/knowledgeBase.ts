@@ -2,6 +2,7 @@ import { existsSync, readdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { findCodeReferences, type Answer } from './answer.js';
 import type { Derivation } from './engine.js';
+import { createRetrievalIndex } from './retrieval.js';
 
 export interface Entry {
   file: string;
@@ -167,32 +168,33 @@ export function normalizeQuestion(question: string): string {
 }
 
 /**
- * Retrieval, in name only. A keyword count is not retrieval and is not meant to
- * be -- it is a placeholder holding the seam open until the real lookup arrives.
+ * Two mechanisms, and the order matters.
  *
- * The one thing it does guarantee is that asking the same question twice finds
- * the entry the first asking paid for. Keywords cannot promise that: they are
- * the model's words for the behaviour, not the asker's words for the question,
- * and the two routinely fail to overlap.
+ * The exact question is a *guarantee*: whoever paid for an entry, and anyone
+ * who asks in the same words, is certain to get it back. Retrieval is a
+ * *judgement*: it reads the whole entry rather than its curated keywords, and
+ * it will find an entry phrased differently from the question -- but only when
+ * they share vocabulary. Neither subsumes the other, so both are here.
+ *
+ * Building the index per call is fine at this size and honest about what it
+ * costs; `createKnowledgeBase` caches one and rebuilds it on write.
  */
 export function findEntry(entries: Entry[], question: string): Entry | undefined {
+  return findWithIndex(entries, createRetrievalIndex(entries), question);
+}
+
+function findWithIndex(
+  entries: Entry[],
+  index: ReturnType<typeof createRetrievalIndex>,
+  question: string,
+): Entry | undefined {
   const normalized = normalizeQuestion(question);
   const sameQuestion = entries.find(
     (entry) => entry.question && normalizeQuestion(entry.question) === normalized,
   );
   if (sameQuestion) return sameQuestion;
 
-  const asked = question.toLowerCase();
-
-  const scored = entries
-    .map((entry) => ({
-      entry,
-      score: entry.keywords.filter((keyword) => asked.includes(keyword)).length,
-    }))
-    .filter(({ score }) => score > 0)
-    .sort((a, b) => b.score - a.score);
-
-  return scored[0]?.entry;
+  return index.best(question)?.entry;
 }
 
 /**
@@ -216,9 +218,17 @@ export interface KnowledgeBase {
 export function createKnowledgeBase(directory: string): KnowledgeBase {
   const entries = loadKnowledgeBase(directory);
 
+  // Rebuilt whenever an entry is written, because document frequencies shift
+  // with the corpus -- a stale index would score against a knowledge base that
+  // no longer exists.
+  let index = createRetrievalIndex(entries);
+  const reindex = () => {
+    index = createRetrievalIndex(entries);
+  };
+
   return {
     find(question: string): Entry | undefined {
-      return findEntry(entries, question);
+      return findWithIndex(entries, index, question);
     },
 
     add(derivation: Derivation): Entry {
@@ -227,6 +237,7 @@ export function createKnowledgeBase(directory: string): KnowledgeBase {
 
       const entry = toEntry(file, derivation);
       entries.push(entry);
+      reindex();
       return entry;
     },
 
@@ -237,6 +248,7 @@ export function createKnowledgeBase(directory: string): KnowledgeBase {
       const at = entries.indexOf(existing);
       if (at === -1) entries.push(refreshed);
       else entries[at] = refreshed;
+      reindex();
       return refreshed;
     },
 
