@@ -1,8 +1,16 @@
 # Documentation Searcher
 
+[![CI](https://github.com/NikolajMosbaek/documentation-searcher/actions/workflows/ci.yml/badge.svg)](https://github.com/NikolajMosbaek/documentation-searcher/actions/workflows/ci.yml)
+
 Ask a codebase about its own behaviour from Microsoft Teams. See `PRD.md` for why and what, `CONSTITUTION.md` for the fixed technical decisions.
 
 ## Where this is right now
+
+**Iteration 11: running the tests without being asked.** CI runs the typecheck, the suite and the build on every push to `main` and every pull request, on Node 20.11 and 22.
+
+It settles something these notes had asserted and never tested: that the suite needs no network and no credentials. Every local run so far has had Claude Code authenticated in the environment, so a test that quietly depended on it would have passed all night. A clean runner cannot, and does not.
+
+The build no longer emits test files either — `tsconfig.json` still includes them so the typecheck covers them, and `tsconfig.build.json` excludes them so `dist` is only the product.
 
 **Iteration 10: exercising the whole thing at once.** `npm test` covers each mechanism in isolation with fakes. `npm run soak` runs one realistic session against a copy of a real codebase with the real ones: a cold question, the same question again, a rephrasing, a follow-up, a dispute with a false claim, a repeat dispute, a source file edited underneath it, and the refresh that follows.
 
