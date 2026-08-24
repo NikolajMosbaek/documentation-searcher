@@ -368,8 +368,19 @@ test('the judge is not consulted when retrieval is already sure', async () => {
   rmSync(directory, { recursive: true, force: true });
 });
 
-test('the judge is not consulted when nothing is even close', async () => {
+test('the judge is not consulted when nothing is close, once there is a corpus', async () => {
   const { directory, knowledgeBase, sources } = await withNearMiss();
+  // Past the point where word statistics are too thin to be trusted.
+  for (let i = 0; i < 6; i += 1) {
+    knowledgeBase.add({
+      ...derivation(`Unrelated behaviour number ${i} concerning shipping labels.`, sources.current),
+      question: `how does shipping label ${i} work?`,
+      title: `Shipping labels ${i}`,
+      keywords: [`shipping ${i}`],
+      fingerprint: `fingerprint-${i}`,
+    });
+  }
+
   let consulted = 0;
   const core = createCore(knowledgeBase, { async deriveAnswer() { return null; } }, {
     sources,
@@ -378,6 +389,21 @@ test('the judge is not consulted when nothing is even close', async () => {
 
   await core.ask('what colour is the office carpet?', THREAD);
   assert.equal(consulted, 0, 'the judge was asked to weigh nothing');
+  rmSync(directory, { recursive: true, force: true });
+});
+
+test('on a small knowledge base a question matching nothing still gets a second opinion', async () => {
+  const { directory, knowledgeBase, sources } = await withNearMiss();
+  let offered = 0;
+  const core = createCore(knowledgeBase, { async deriveAnswer() { return null; } }, {
+    sources,
+    judge: { async choose(_q, candidates) { offered = candidates.length; return undefined; } },
+  });
+
+  // One entry: lexical scoring has nothing to say, so it must not be the thing
+  // that decides. Cents to ask, against a dollar to derive.
+  await core.ask('what colour is the office carpet?', THREAD);
+  assert.equal(offered, 1, 'a small corpus was written off without a second opinion');
   rmSync(directory, { recursive: true, force: true });
 });
 

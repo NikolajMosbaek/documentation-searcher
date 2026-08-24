@@ -37,6 +37,16 @@ export interface Match {
 const MIN_SCORE = 1.0;
 const MIN_COVERAGE = 0.34;
 
+/**
+ * At or below this many entries, a lexical score carries very little. Words are
+ * shared by most of the corpus, so inverse document frequency has almost
+ * nothing to distinguish, and a question that matches nothing may simply be one
+ * the statistics cannot see. A second opinion on the whole knowledge base is
+ * cheap at this size and far cheaper than deriving an answer that already
+ * exists, so nothing is written off on lexical evidence alone.
+ */
+const TOO_SMALL_TO_JUDGE_LEXICALLY = 5;
+
 const K1 = 1.2;
 const B = 0.75;
 
@@ -99,6 +109,19 @@ export function createRetrievalIndex(entries: Entry[]): RetrievalIndex {
 
   function idf(term: string): number {
     const seenIn = documentFrequency.get(term) ?? 0;
+
+    // A word in every entry says nothing about which entry to pick, so it is
+    // worth nothing. Without this the formula still awards it weight, and on a
+    // very small knowledge base -- which is what every deployment starts with,
+    // and what a freshly seeded one stays as for a while -- *every* word is in
+    // every entry. One long entry then matched almost anything: measured on a
+    // single-entry base, questions it plainly did not answer scored 1.47 to
+    // 1.65 against bars of 1.0 and 0.34, and were served.
+    //
+    // That failure bypasses the second opinion entirely, because a judge is
+    // only asked about candidates that fell *short* of the bars.
+    if (seenIn === 0 || seenIn === documents.length) return 0;
+
     return Math.log(1 + (documents.length - seenIn + 0.5) / (seenIn + 0.5));
   }
 
@@ -117,12 +140,25 @@ export function createRetrievalIndex(entries: Entry[]): RetrievalIndex {
       return top && clears(top) ? top : undefined;
     },
     candidates(question: string, limit = 5): Match[] {
-      // Only the uncertain band. Anything clearing the bars needs no second
-      // opinion, and anything scoring zero shares no word with the question --
-      // there is nothing there for a judge to weigh.
-      return rank(question)
-        .filter((match) => !clears(match))
-        .slice(0, limit);
+      const ranked = rank(question);
+
+      // The uncertain band: ranked, but not confidently enough to serve.
+      const uncertain = ranked.filter((match) => !clears(match)).slice(0, limit);
+      if (uncertain.length > 0) return uncertain;
+
+      // An empty band because something cleared the bars is not the same as an
+      // empty band because nothing scored at all. Only the second is a shortage
+      // of evidence; the first already has an answer.
+      if (ranked.length > 0) return [];
+
+      // Nothing scored. On a large enough knowledge base that means the question
+      // shares no word with anything, and there is nothing to weigh. On a small
+      // one it may only mean the statistics are too thin to say.
+      if (documents.length > TOO_SMALL_TO_JUDGE_LEXICALLY) return [];
+
+      return documents
+        .slice(0, limit)
+        .map((document) => ({ entry: document.entry, score: 0, coverage: 0 }));
     },
   };
 }

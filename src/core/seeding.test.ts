@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
-import { chosenQuestions, formatSeedPlan, parseSeedPlan, type Area } from './seeding.js';
+import { chosenQuestions, estimateCostUsd, formatSeedPlan, parseSeedPlan, type Area } from './seeding.js';
 
 const AREAS: Area[] = [
   {
@@ -65,4 +65,18 @@ Why:   spacing is all over the place
 
 test('prose before the first area is not mistaken for content', () => {
   assert.deepEqual(parseSeedPlan('# Seeding plan\n\nWhy: this line is preamble\n- so is this\n'), []);
+});
+
+test('the cost estimate is a measured range, and nothing costs nothing', () => {
+  assert.deepEqual(estimateCostUsd(0), { low: 0, high: 0 });
+
+  const one = estimateCostUsd(1);
+  assert.equal(one.low, 0.6);
+  assert.equal(one.high, 1.15);
+
+  // Whatever the bounds become, the range must stay a range and stay ordered.
+  const ten = estimateCostUsd(10);
+  assert.ok(ten.low < ten.high);
+  assert.equal(ten.low, one.low * 10);
+  assert.equal(ten.high, one.high * 10);
 });

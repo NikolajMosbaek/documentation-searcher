@@ -5,6 +5,7 @@ import {
   createClaudeEngine,
   createClaudeProposer,
   createKnowledgeBase,
+  estimateCostUsd,
   formatSeedPlan,
   parseSeedPlan,
 } from './core/index.js';
@@ -21,7 +22,10 @@ if (!CODEBASE) {
   process.exit(2);
 }
 
-const write = process.argv.includes('--write');
+// --dry-run reads the plan and reports, so it implies --write's half of the job
+// without the part that costs anything.
+const dryRun = process.argv.includes('--dry-run');
+const write = dryRun || process.argv.includes('--write');
 await (write ? writeChosen() : propose());
 
 /** Phase one: read the codebase and put a checklist in front of a developer. */
@@ -64,10 +68,25 @@ async function writeChosen(): Promise<void> {
   }
 
   const knowledgeBase = createKnowledgeBase(KNOWLEDGE_BASE);
-  const engine = createClaudeEngine({ codebase: CODEBASE!, model: MODEL, maxBudgetUsd: 5 });
+
+  // What is already covered is free to determine, so a dry run can say exactly
+  // which questions would be paid for rather than guessing from the total.
+  const outstanding = questions.filter((question) => !knowledgeBase.find(question));
+  const { low, high } = estimateCostUsd(outstanding.length);
 
   const plural = questions.length === 1 ? 'question' : 'questions';
-  console.log(`${questions.length} ${plural} to answer. Roughly a minute and a dollar each.\n`);
+  console.log(`${questions.length} ${plural} ticked; ${outstanding.length} not yet covered.`);
+  console.log(`Answering those would take about a minute each and cost roughly $${low.toFixed(2)}-$${high.toFixed(2)}.\n`);
+
+  if (dryRun) {
+    for (const question of questions) {
+      console.log(`${knowledgeBase.find(question) ? 'covered ' : 'would ask'}  ${question}`);
+    }
+    console.log('\nNothing was written. Drop --dry-run to answer the ones that are not covered.');
+    return;
+  }
+
+  const engine = createClaudeEngine({ codebase: CODEBASE!, model: MODEL, maxBudgetUsd: 5 });
   let written = 0;
 
   for (const [index, question] of questions.entries()) {

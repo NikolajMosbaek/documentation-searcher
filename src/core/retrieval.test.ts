@@ -71,8 +71,7 @@ test('ranking prefers the entry that shares the most', () => {
   assert.equal(ranked[0]?.entry, TRIAL);
 });
 
-test('the uncertain band holds near misses, and nothing else', () => {
-  // Shares one common word with the cancel entry and clears neither bar.
+test('the uncertain band holds near misses, not confident hits', () => {
   const near = index.candidates('what happens if I cancel halfway through the month?');
   assert.equal(near.length >= 1, true);
   assert.equal(near[0]?.entry, CANCEL);
@@ -80,9 +79,25 @@ test('the uncertain band holds near misses, and nothing else', () => {
   // A confident hit needs no second opinion, so it is not in the band.
   const confident = index.candidates('what happens when a free trial expires?');
   assert.equal(confident.some((match) => match.entry === TRIAL), false);
+});
 
-  // Nothing shared at all means there is nothing to weigh.
-  assert.deepEqual(index.candidates('what colour is the office carpet?'), []);
+test('on a small knowledge base nothing is written off on lexical evidence alone', () => {
+  // Three entries is too few for word statistics to mean much, so a question
+  // that matches nothing is offered to the judge rather than declared absent.
+  const nothing = index.candidates('what colour is the office carpet?');
+  assert.equal(nothing.length, 3, 'a small corpus should offer everything for a second opinion');
+  assert.deepEqual(nothing.map((match) => match.score), [0, 0, 0]);
+});
+
+test('on a larger knowledge base an unrelated question is written off', () => {
+  const many = createRetrievalIndex([
+    TRIAL, CANCEL, PAYMENT,
+    entry('a.md', 'title: Changing a billing address\nkeywords: address, billing address', '## Short answer\nA billing address is changed from the account settings page.'),
+    entry('b.md', 'title: Downloading an invoice\nkeywords: invoice, receipt, download', '## Short answer\nEvery invoice is available to download from the billing history.'),
+    entry('c.md', 'title: Pausing an account\nkeywords: pause, suspend, hold', '## Short answer\nAn account can be paused for up to three months.'),
+  ]);
+
+  assert.deepEqual(many.candidates('what colour is the office carpet?'), []);
 });
 
 test('the band is capped so a judge is never handed the whole corpus', () => {

@@ -23,7 +23,7 @@ export { noJudge } from './judge.js';
 export type { CandidateJudge } from './judge.js';
 export { createClaudeJudge } from './claudeJudge.js';
 export type { ClaudeJudgeConfig } from './claudeJudge.js';
-export { chosenQuestions, formatSeedPlan, parseSeedPlan } from './seeding.js';
+export { chosenQuestions, estimateCostUsd, formatSeedPlan, parseSeedPlan } from './seeding.js';
 export type { Area, AreaProposer } from './seeding.js';
 export { createClaudeProposer } from './claudeProposer.js';
 export type { ClaudeProposerConfig } from './claudeProposer.js';

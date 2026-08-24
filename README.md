@@ -13,7 +13,7 @@ See [`PRD.md`](PRD.md) for why and what, [`CONSTITUTION.md`](CONSTITUTION.md) fo
 Every question goes to the knowledge base first.
 
 1. **A question that leans on the conversation** — *"and how does it know?"* — is rewritten to stand on its own before anything else sees it.
-2. **The knowledge base is searched.** The exact wording of a question that has been asked before always finds its entry. Otherwise BM25 runs over the whole of every entry. If that ranks something without being confident, a model is asked whether any candidate genuinely answers the question — cents, rather than the dollar a fresh answer costs.
+2. **The knowledge base is searched.** The exact wording of a question that has been asked before always finds its entry. Otherwise BM25 runs over the whole of every entry. If that ranks something without being confident, a model is asked whether any candidate genuinely answers the question — cents, rather than the dollar a fresh answer costs. On a knowledge base of a handful of entries, word statistics say almost nothing, so nothing is written off on lexical evidence alone: the whole base goes for that second opinion instead.
 3. **A stored entry is checked before it is trusted.** Each machine-written entry records the files it came from and a hash of them. Same hash, it is served. Different hash, the answer is worked out again and the entry refreshed first, so nobody is handed a silently outdated answer.
 4. **A question nothing covers** sends the bot to read the codebase, write what it learns back as a new entry, and answer from that. If the code genuinely does not cover the question, it says so and does not guess.
 5. **Saying an answer is wrong** in the thread makes the bot read the code again. The objection is a hint about where to look, never evidence — if the code supports the original answer, it says so rather than agreeing with you.
@@ -51,10 +51,11 @@ On an existing codebase, have the bot propose what is worth documenting before a
 ```sh
 DOCSEARCHER_CODEBASE=/path/to/the/codebase npm run seed             # proposes seed-plan.md, writes nothing
 $EDITOR seed-plan.md                                                # tick what is worth documenting
-DOCSEARCHER_CODEBASE=/path/to/the/codebase npm run seed -- --write  # answers only what was ticked
+DOCSEARCHER_CODEBASE=/path/to/the/codebase npm run seed -- --dry-run # says what it would ask and what that costs
+DOCSEARCHER_CODEBASE=/path/to/the/codebase npm run seed -- --write   # answers only what was ticked
 ```
 
-Nothing arrives ticked and there is no flag that seeds everything: the point is to choose. `seed-plan.md` is a working file — commit it if a record of what was chosen is useful, or delete it.
+Nothing arrives ticked and there is no flag that seeds everything: the point is to choose. `--dry-run` reports which ticked questions are already covered and what answering the rest would cost, without spending anything. `seed-plan.md` is a working file — commit it if a record of what was chosen is useful, or delete it.
 
 ### Checking it
 

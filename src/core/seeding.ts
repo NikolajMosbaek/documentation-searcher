@@ -95,6 +95,18 @@ export function chosenQuestions(areas: Area[]): string[] {
     .filter(Boolean);
 }
 
+/**
+ * What answering a number of questions is likely to cost, in US dollars.
+ *
+ * The bounds are measured rather than assumed: individual answers derived
+ * during development ranged from about $0.60 to about $1.15, depending on how
+ * much of the codebase had to be read. A larger or less commented codebase
+ * will cost more, so this is a floor to plan against and not a quote.
+ */
+export function estimateCostUsd(questions: number): { low: number; high: number } {
+  return { low: questions * 0.6, high: questions * 1.15 };
+}
+
 function oneLine(value: string): string {
   return value.replace(/\s+/g, ' ').trim();
 }
