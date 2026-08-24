@@ -2,142 +2,86 @@
 
 [![CI](https://github.com/NikolajMosbaek/documentation-searcher/actions/workflows/ci.yml/badge.svg)](https://github.com/NikolajMosbaek/documentation-searcher/actions/workflows/ci.yml)
 
-Ask a codebase about its own behaviour from Microsoft Teams. See `PRD.md` for why and what, `CONSTITUTION.md` for the fixed technical decisions.
+A Microsoft Teams bot, bound to a single codebase, that anyone in an organisation can ask about that codebase's behaviour in plain language — without a developer in the loop.
 
-## Where this is right now
+Questions about how software behaves come from product owners, testers and support staff, and they all route through a developer who usually has to go and find out too. This answers them directly, in product language, with no file names or code in the reply. Every answer it works out is written back into a knowledge base that lives beside the code, so the second person to ask the same thing gets it instantly and for nothing.
 
-**Iteration 12: one entry per behaviour, not one per phrasing.** Two ways of asking the same thing could both miss, both be derived, and leave two entries saying the same thing — with retrieval then picking between them arbitrarily. An entry now carries every question known to reach it, and a derivation that says the same thing about the same code attaches its question to the entry that already exists instead of landing beside it.
+See [`PRD.md`](PRD.md) for why and what, [`CONSTITUTION.md`](CONSTITUTION.md) for the technical decisions that do not change, and [`docs/diary/`](docs/diary/) for how it was built, in order, including what went wrong.
 
-Sameness needs both halves: the identical content hash, so it came from exactly the same files, *and* wording similar enough to be the same behaviour. Same code alone is not enough, because one file describes many behaviours.
+## How it answers
 
-**Iteration 11: running the tests without being asked.** CI runs the typecheck, the suite and the build on every push to `main` and every pull request, on Node 20.11 and 22.
+Every question goes to the knowledge base first.
 
-It settles something these notes had asserted and never tested: that the suite needs no network and no credentials. Every local run so far has had Claude Code authenticated in the environment, so a test that quietly depended on it would have passed all night. A clean runner cannot, and does not.
+1. **A question that leans on the conversation** — *"and how does it know?"* — is rewritten to stand on its own before anything else sees it.
+2. **The knowledge base is searched.** The exact wording of a question that has been asked before always finds its entry. Otherwise BM25 runs over the whole of every entry. If that ranks something without being confident, a model is asked whether any candidate genuinely answers the question — cents, rather than the dollar a fresh answer costs.
+3. **A stored entry is checked before it is trusted.** Each machine-written entry records the files it came from and a hash of them. Same hash, it is served. Different hash, the answer is worked out again and the entry refreshed first, so nobody is handed a silently outdated answer.
+4. **A question nothing covers** sends the bot to read the codebase, write what it learns back as a new entry, and answer from that. If the code genuinely does not cover the question, it says so and does not guess.
+5. **Saying an answer is wrong** in the thread makes the bot read the code again. The objection is a hint about where to look, never evidence — if the code supports the original answer, it says so rather than agreeing with you.
 
-The build no longer emits test files either — `tsconfig.json` still includes them so the typecheck covers them, and `tsconfig.build.json` excludes them so `dist` is only the product.
-
-**Iteration 10: exercising the whole thing at once.** `npm test` covers each mechanism in isolation with fakes. `npm run soak` runs one realistic session against a copy of a real codebase with the real ones: a cold question, the same question again, a rephrasing, a follow-up, a dispute with a false claim, a repeat dispute, a source file edited underneath it, and the refresh that follows.
-
-It found a bug the unit tests could not. The message shown when the same answer is flagged twice in a row was borrowing the "stale" provenance, so it rendered with a warning saying the code had changed and could not be checked — directly contradicting the message itself, which says the code was read moments ago. The unit test asserted the sentence and never rendered the answer. Provenance is now its own value, and every variant is rendered in a test.
-
-The soak reads a real codebase several times, so it costs two to three dollars and takes a few minutes. That is why it is a separate command.
-
-**Iteration 9: knowing what it costs.** The product turns on a question costing real money the first time and nothing afterwards, and until now that number was invisible. Every read of the codebase is reported with what it actually cost, why it happened, and a running session total:
-
-```
-[SPEND] $0.6070 miss     (session $0.6070) What does the bot do when nobody has configured a codebase for it?
-```
-
-Observed costs range from about $0.60 to about $1.15 per question, depending on how much of the codebase has to be read — so "roughly a dollar" is a range, not a figure.
-
-Two things that were silently expensive are now bounded or visible. Flagging the same answer repeatedly no longer reads the whole codebase each time; an entry re-read within the last five minutes is left alone. And when the second opinion is offered candidates and rejects them all, that is logged — those are exactly the questions where money was spent on something the knowledge base may already have held, and they are the evidence for whether the judge is tuned correctly.
-
-**Iteration 8: a second opinion on near misses.** Lexical retrieval is deliberately reluctant, which means it misses questions an entry really does answer — and a miss costs a derivation. When retrieval ranks something but is not confident, the candidates now go to a model that decides whether any of them actually answers the question. Cents and five seconds instead of a dollar and a minute.
-
-It is gated at both ends: a confident hit is never second-guessed, and a question sharing no word with anything is never sent, because there is nothing to weigh. The judge is told to choose nothing when in doubt — a wrong rescue answers a question nobody asked, while a wrong refusal merely costs the derivation that would have happened anyway.
-
-Measured on five questions: three near misses, two rescued and one conservatively declined; two unrelated questions cost nothing.
-
-**Iteration 7: guided seeding.** `npm run seed` reads the codebase and proposes areas worth documenting first, as a checklist in `seed-plan.md`. Nothing is ticked and nothing is written. A developer ticks what they want, edits or deletes questions, and runs `npm run seed -- --write` — which answers only what was ticked, skipping anything the knowledge base already covers.
-
-That two-step is the feature, not scaffolding around it: the PRD asks for "a reviewed baseline rather than an unattended bulk index", so there is deliberately no flag that seeds everything. Review of what gets written is the diff, because entries are files.
-
-**Iteration 6: correcting an answer from the thread.** Saying *"that's wrong"* in the conversation makes the bot read the code again and rewrite the entry that produced the answer. The PRD's four maintenance paths are now all present: the bot fills gaps, the bot refreshes what went stale, developers edit the files, and anyone can flag a bad answer where they found it.
-
-An objection is never treated as fact. It is handed to the engine as a pointer at what to re-read, with an instruction to contradict the objector if the code does — because the PRD makes the code the only source of truth, and someone in a chat thread is not the code. Measured against a deliberately false objection, the bot re-read and stood by its original answer.
-
-**Iteration 5: follow-up questions.** A thread is now a conversation. A question that leans on what came before — *"and how does it know?"* — is rewritten into one that stands on its own before anything else sees it, so retrieval, derivation, and the entry that gets written all work on a question that means something by itself.
-
-That last part is the reason this mattered more than it looked. Since the bot began writing entries, an unresolved follow-up was not merely answered badly; it was *stored*, under a title and keywords meaningless to anyone who was not in the thread.
-
-Measured on a real three-question conversation: one derivation instead of three.
-
-**Iteration 4: retrieval that retrieves.** Lookup is now BM25 over the whole of each entry — title, stored question, keywords, and answer text — rather than a substring count against curated keywords. A question phrased differently from the entry finds it, provided the two share vocabulary. There is still a guarantee underneath: the exact question that paid for an entry always finds it again.
-
-A match must clear both a score and a coverage bar. Missing is the safe failure — it costs a re-derivation — while a wrong hit is served silently to everyone who asks next, so the bars are set to prefer missing.
-
-`npm test` now runs the suite that makes any of this safe to change.
-
-**Iteration 3: verify on read.** The PRD's mechanism is now complete. A question is answered from the knowledge base when an entry covers it *and* the code that entry describes has not moved. When the code has moved, the entry is derived again and refreshed before anyone is answered from it. When no entry covers the question at all, the bot reads the codebase, writes what it learns back, and answers from that.
-
-Every machine-written entry records the files it came from and a content hash of those files. On each read the hash is recomputed: same hash, serve it; different hash, re-derive it. No CI hooks, commit hooks, or scheduled rebuilds, as the PRD requires — the check happens because someone asked.
-
-The analysis engine is the Claude Agent SDK, behind the `AnalysisEngine` interface. It gets read-only access to the codebase and returns a structured answer, never prose to be parsed.
-
-Measured on real questions: 40–55 seconds and roughly one US dollar to derive an answer, then about a millisecond and nothing for every asker after that. That ratio is the whole product.
+Costs, measured: about **$0.60–$1.15 and a minute** the first time a question is answered, then about **a millisecond and nothing** for everyone after. That ratio is the whole product.
 
 ## Running it
 
 ```sh
 npm install
-DOCSEARCHER_CODEBASE=/path/to/the/codebase npm run dev   # starts the agent on port 3978
-npm test                                                 # the suite, no network or credentials needed
-DOCSEARCHER_CODEBASE=/path/to/a/codebase npm run soak     # one real session end to end; costs a few dollars
+DOCSEARCHER_CODEBASE=/path/to/the/codebase npm run dev
 ```
 
-The soak copies the codebase before touching it, so the original is never modified.
+The bot listens on port 3978. Without `DOCSEARCHER_CODEBASE` it still runs and still answers from the knowledge base, but it cannot fill a gap — and says so once at startup.
 
-To avoid a cold start on an existing codebase:
-
-```sh
-DOCSEARCHER_CODEBASE=/path/to/the/codebase npm run seed            # proposes seed-plan.md, writes nothing
-$EDITOR seed-plan.md                                               # tick what is worth documenting
-DOCSEARCHER_CODEBASE=/path/to/the/codebase npm run seed -- --write # answers only what was ticked
-```
-
-`seed-plan.md` is a working file. Commit it if a record of what was chosen is useful, or delete it.
-
-Without `DOCSEARCHER_CODEBASE` the bot still runs and still answers from the knowledge base, but it cannot fill a miss — it says so once at startup.
-
-| Variable | Default | What it does |
-| --- | --- | --- |
-| `DOCSEARCHER_CODEBASE` | unset | The one codebase this install answers about. Unset means misses are never filled. |
-| `DOCSEARCHER_KNOWLEDGE_BASE` | `./knowledge-base` | Where entries are read from and written to. |
-| `DOCSEARCHER_MODEL` | `claude-opus-5` | The model behind the analysis engine. |
-| `DOCSEARCHER_MAX_USD` | `5` | Ceiling for a single derivation. Below about `1.5` real questions get cut off. |
-| `DOCSEARCHER_RESOLVER_MODEL` | falls back to `DOCSEARCHER_MODEL` | The model that rewrites follow-up questions. |
-| `DOCSEARCHER_JUDGE_MODEL` | falls back to `DOCSEARCHER_MODEL` | The model that weighs near-miss candidates. |
-| — | 5 minutes | How long an entry is left alone after a dispute re-read it. Set via `disputeCooldownMs` in code. |
-| `DOCSEARCHER_SEED_AREAS` | `8` | How many areas seeding proposes. |
-| `DOCSEARCHER_SEED_PLAN` | `./seed-plan.md` | Where the seeding checklist lives. |
-
-Authentication is whatever the Claude Agent SDK already resolves from the environment. No key is read, stored, or committed by this project.
-
-In a second terminal, install the Microsoft 365 Agents Playground once and point it at the running agent:
+To try it without a Teams tenant, install Microsoft's Agents Playground once and point it at the running bot:
 
 ```sh
 npm install -g @microsoft/m365agentsplayground
 npm run playground   # opens http://localhost:56150
 ```
 
-Ask it *"what happens when a user cancels a subscription mid-period?"* and you should get a structured answer. Ask it about anything else and you should get a clean miss.
+Ask *"what happens when a user cancels a subscription mid-period?"* and you should get a structured answer from the seeded entries. Ask about anything else and, with a codebase configured, it will go and read it.
 
 The Playground sends unauthenticated requests, so the app enables `dangerouslyAllowUnauthenticatedRequests` whenever `NODE_ENV` is not `production`. No Teams tenant, tunnel, or Azure subscription is involved yet.
 
-## Layout
+### Avoiding a cold start
 
+On an existing codebase, have the bot propose what is worth documenting before anyone asks:
+
+```sh
+DOCSEARCHER_CODEBASE=/path/to/the/codebase npm run seed             # proposes seed-plan.md, writes nothing
+$EDITOR seed-plan.md                                                # tick what is worth documenting
+DOCSEARCHER_CODEBASE=/path/to/the/codebase npm run seed -- --write  # answers only what was ticked
 ```
-src/index.ts          the entire Teams adapter -- resolves a thread id, calls the core, sends what it returns
-src/core/index.ts     createCore(): ask(question, thread) -> Answer. Knows nothing about Teams
-src/core/answer.ts    the Answer shape, the markdown formatter, and the no-code-references guard
-src/core/knowledgeBase.ts  reads, writes and parses entry files; keyword lookup (a placeholder, not retrieval)
-src/core/engine.ts    the AnalysisEngine interface, the Derivation it returns, and the stub
-src/core/claudeEngine.ts   the real engine: reads the codebase read-only, returns a structured answer
-src/core/sourceIndex.ts    content-hashes the files an answer came from, so staleness is detectable
-src/core/retrieval.ts      BM25 over the entries; in-memory, rebuilt whenever one is written
-src/core/followUp.ts       decides whether a question leans on the conversation, and the resolver interface
-src/core/correction.ts     spots someone disputing an answer, and turns the objection into something to check
-src/core/judge.ts          the second-opinion interface, for entries retrieval could not decide about
-src/core/claudeJudge.ts    weighs near-miss candidates against the question; reads neither codebase nor files
-src/core/seeding.ts        the seeding plan: its shape, its format, and a forgiving parser for a hand-edited one
-src/core/claudeProposer.ts reads the codebase and proposes what is worth documenting first
-src/seed.ts                the seeding command -- the one thing here a developer runs rather than asks
-src/core/claudeResolver.ts rewrites a follow-up so it stands alone; reads the thread, never the codebase
-src/core/*.test.ts         the suite -- run with `npm test`
-src/soak.ts                one realistic session against a real codebase -- run with `npm run soak`
-src/core/threadContext.ts  in-memory conversation memory
-knowledge-base/       the entries themselves, as markdown
+
+Nothing arrives ticked and there is no flag that seeds everything: the point is to choose. `seed-plan.md` is a working file — commit it if a record of what was chosen is useful, or delete it.
+
+### Checking it
+
+```sh
+npm test    # the suite. No network, no credentials, about a second
+npm run typecheck
 ```
+
+```sh
+DOCSEARCHER_CODEBASE=/path/to/a/codebase npm run soak
+```
+
+The soak runs one realistic session end to end against the real engine — a cold question, the same question again, a rephrasing, a follow-up, a dispute with a false claim, a repeat dispute, a source file edited underneath it, and the refresh that follows. It costs two to three dollars and takes a few minutes, which is why it is not part of `npm test`. It copies the codebase first, so the original is never modified.
+
+## Configuration
+
+| Variable | Default | What it does |
+| --- | --- | --- |
+| `DOCSEARCHER_CODEBASE` | unset | The one codebase this install answers about. Unset means gaps are never filled. |
+| `DOCSEARCHER_KNOWLEDGE_BASE` | `./knowledge-base` | Where entries are read from and written to. |
+| `DOCSEARCHER_MODEL` | `claude-opus-5` | The model behind the analysis engine. |
+| `DOCSEARCHER_MAX_USD` | `5` | Ceiling for working out a single answer. Below about `1.5`, real questions get cut off. |
+| `DOCSEARCHER_RESOLVER_MODEL` | falls back to `DOCSEARCHER_MODEL` | The model that rewrites follow-up questions. |
+| `DOCSEARCHER_JUDGE_MODEL` | falls back to `DOCSEARCHER_MODEL` | The model that weighs near-miss candidates. |
+| `DOCSEARCHER_SEED_AREAS` | `8` | How many areas seeding proposes. |
+| `DOCSEARCHER_SEED_PLAN` | `./seed-plan.md` | Where the seeding checklist lives. |
+| `PORT` | `3978` | The port the bot listens on. |
+
+`disputeCooldownMs` is set in code rather than by environment, and defaults to five minutes — how long an entry is left alone after being re-read because someone disputed it.
+
+Authentication is whatever the Claude Agent SDK already resolves from the environment. **No key is read, stored, or committed by this project.**
 
 ## Knowledge-base entries
 
@@ -165,22 +109,58 @@ One or two sentences.
 - Conditions and exceptions
 ```
 
-`## Questions`, `derived-from`, and `fingerprint` are written by the bot. Questions live in a section rather than in frontmatter because they routinely contain commas, which is how every other list here is separated; a single `question:` field is still read, so entries written before this stay readable. `derived-from` records which files the answer came from and `fingerprint` is a content hash of those files at the moment it was written; together they are what makes verify-on-read work. The questions are the exact wordings known to reach this entry, stored so that asking one of them again is guaranteed to find it — keyword matching cannot promise that, because the keywords are the model's words for the behaviour and the question is the asker's words for the question.
+The questions, `derived-from` and `fingerprint` are written by the bot; a hand-written entry leaves all three out. All three are metadata and are never shown to an asker.
 
-All three are metadata and never shown to an asker. `derived-from` is the only place a file path may appear anywhere in the knowledge base. Hand-written entries leave all three out, and an entry with no fingerprint is never treated as stale — a developer wrote it deliberately and owns it.
+- **Questions** are every wording known to reach this entry, so asking one of them again is guaranteed to find it. Keywords cannot promise that — they are the model's words for the behaviour, and a question is the asker's words for the question. They live in a section rather than frontmatter because questions contain commas, which is how every frontmatter list here is separated. A single legacy `question:` field is still read.
+- **`derived-from`** records which files the answer came from. It is the only place a file path may appear anywhere in the knowledge base.
+- **`fingerprint`** is a content hash of those files when the entry was written. With `derived-from` it is what makes the staleness check work. An entry with no fingerprint is never treated as stale: a developer wrote it deliberately and owns it.
 
-Entries must be in product language. `loadKnowledgeBase` warns on load if an entry reads like code — file paths, function calls, backticks — because the PRD forbids code references in answers. For an answer the bot derived, the same check is stricter: a leak means the answer is discarded rather than stored, because a stored entry gets served to everyone who asks next.
+Entries must be in product language. Loading warns if one reads like code — file paths, function calls, backticks — because the PRD forbids code references in answers. For an answer the bot derived the same check is stricter: a leak means the answer is discarded rather than stored, since a stored entry is served to everyone who asks next.
 
-A malformed entry is skipped with a warning rather than taking down the whole knowledge base, which matters now that the bot writes entries itself.
+A malformed entry is skipped with a warning rather than taking the whole knowledge base down, which matters now that the bot writes entries itself. Two entries that say the same thing about the same code are merged into one carrying both questions, so the knowledge base does not degrade as it fills.
 
-## Deliberately not built yet
+## Layout
 
-Real Teams registration. Nothing in this project has yet run inside an actual Teams client — only against the protocol.
+The core knows nothing about Teams; the adapter decides nothing about answers. That split is a constitutional requirement, not a preference.
 
-Nothing rate-limits a dispute. Flagging an answer costs a full derivation, so anyone who can reach the bot can spend money by repeatedly disagreeing with it.
+```
+src/index.ts               the entire Teams adapter: resolves a thread id, calls the core, sends what it returns
+src/seed.ts                the seeding command -- the one thing here a developer runs rather than asks
+src/soak.ts                one realistic session against a real codebase
 
-Resolving a follow-up costs four to six seconds, and weighing a near miss four to five, which is most of what an asker waits for when the answer is already stored. This was measured rather than guessed: a call doing the least possible work — no tools, one turn, one word of output — still takes about 3.2 seconds and costs $0.0017. The latency is fixed overhead per call to the agent harness, not inference, and a smaller model is *slower* rather than faster.
+src/core/index.ts          createCore(): ask(question, thread) -> Exchange. Knows nothing about Teams
+src/core/answer.ts         the Answer shape, the markdown formatter, and the no-code-references guard
+src/core/knowledgeBase.ts  reads, writes, parses and merges entry files; owns the lookup
+src/core/retrieval.ts      BM25 over the entries; in-memory, rebuilt whenever one is written
+src/core/sourceIndex.ts    content-hashes the files an answer came from, so staleness is detectable
+src/core/threadContext.ts  in-memory conversation memory
 
-The obvious fix is not free. A plain Messages API call would suit a text rewrite far better, but it needs its own credential, where the agent harness runs on whatever Claude Code is already authenticated with. That trades a few seconds of latency for an API key to provision and protect, so it has been left alone deliberately.
+src/core/engine.ts         the AnalysisEngine interface, the Derivation it returns, and the stub
+src/core/followUp.ts       whether a question leans on the conversation, and the resolver interface
+src/core/judge.ts          the second-opinion interface, for entries retrieval could not decide about
+src/core/correction.ts     spots a disputed answer, and turns the objection into something to check
+src/core/seeding.ts        the seeding plan: its shape, its format, and a forgiving parser
 
-Retrieval is lexical, and a second opinion now covers the band where it ranks something without being sure. What is still uncovered is a question sharing *no* vocabulary at all with the entry that answers it: nothing ranks, so there is nothing to weigh, and no amount of judging reaches it. Closing that means embeddings, which mean storage — deferred until a fake genuinely cannot cut it.
+src/core/claudeEngine.ts   reads the codebase read-only and returns a structured answer
+src/core/claudeResolver.ts rewrites a follow-up so it stands alone; reads the thread, never the codebase
+src/core/claudeJudge.ts    weighs near-miss candidates; reads neither the codebase nor any file
+src/core/claudeProposer.ts reads the codebase and proposes what is worth documenting first
+
+src/core/*.test.ts         the suite -- run with `npm test`
+knowledge-base/            the entries themselves, as markdown
+docs/diary/                how this was built, in order, including what went wrong
+```
+
+Every `claude*.ts` sits behind an interface in the file above it, so no call site knows which of them is the Claude Agent SDK.
+
+## Known limits
+
+- **It has never run inside Teams.** Only against the protocol. That needs a tenant.
+- **Retrieval is lexical.** A second opinion covers the band where it ranks something without being sure, but a question sharing *no* vocabulary with the entry that answers it never ranks at all, so there is nothing to weigh. Closing that means embeddings, which mean storage — deferred until a fake genuinely cannot cut it.
+- **Follow-ups and near misses cost a few seconds.** Four to six, and four to five, which is most of what an asker waits for when the answer is already stored. Measured rather than guessed: a call doing the least possible work — no tools, one turn, one word out — still takes about 3.2 seconds and costs $0.0017, and a *smaller* model is slower. It is fixed overhead per call to the agent harness, not inference. A plain Messages API call would suit a text rewrite far better but needs its own credential, where the harness runs on whatever Claude Code is already authenticated with; that trade has been declined deliberately.
+- **Reading a large codebase costs more.** Both cost measurements are against this project's own source, which is small and heavily commented. `DOCSEARCHER_MAX_USD` is the only bound.
+- **Spend is logged, not attributed.** `[SPEND]` lines go to stdout with a running total; nothing records which thread or person caused them.
+
+## Not built yet
+
+Real Teams registration, and the two questions the PRD deliberately left open: whether the bot may propose changes to the code rather than only describing it, and whether access control is needed. Both are product decisions rather than missing work.
