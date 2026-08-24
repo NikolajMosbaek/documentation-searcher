@@ -11,7 +11,7 @@ export interface Answer {
   /** Conditions and exceptions that change the behaviour. */
   edgeCases: string[];
   /** Where this answer came from. Diagnostic only -- never shown to the asker. */
-  source: 'knowledge-base' | 'miss';
+  source: 'knowledge-base' | 'engine' | 'miss';
 }
 
 export function formatAnswer(answer: Answer): string {
@@ -51,9 +51,10 @@ export function missAnswer(): Answer {
  * gets flagged at load time rather than reaching an asker.
  */
 const CODE_SHAPED = [
+  // A filename, which also catches a line reference like "subscription.ts:142"
+  // because the extension ends at the colon.
   /\b[\w/-]+\.(ts|tsx|js|py|cs|java|rb|go|rs|php)\b/i,
   /\b\w+\.\w+\(\)/,
-  /:\d{1,5}\b/,
   /`[^`]+`/,
 ];
 

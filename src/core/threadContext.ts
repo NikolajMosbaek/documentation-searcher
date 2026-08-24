@@ -1,10 +1,13 @@
+import type { Answer } from './answer.js';
+
 /**
  * Conversation memory. In-memory on purpose -- it stays a Map until a fake
  * genuinely can't cut it.
  */
 export interface Turn {
   question: string;
-  answeredFrom: 'knowledge-base' | 'miss';
+  /** Tracks the answer's own provenance rather than restating it. */
+  answeredFrom: Answer['source'];
 }
 
 export interface ThreadContext {
