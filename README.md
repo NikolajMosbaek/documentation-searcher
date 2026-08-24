@@ -4,6 +4,12 @@ Ask a codebase about its own behaviour from Microsoft Teams. See `PRD.md` for wh
 
 ## Where this is right now
 
+**Iteration 10: exercising the whole thing at once.** `npm test` covers each mechanism in isolation with fakes. `npm run soak` runs one realistic session against a copy of a real codebase with the real ones: a cold question, the same question again, a rephrasing, a follow-up, a dispute with a false claim, a repeat dispute, a source file edited underneath it, and the refresh that follows.
+
+It found a bug the unit tests could not. The message shown when the same answer is flagged twice in a row was borrowing the "stale" provenance, so it rendered with a warning saying the code had changed and could not be checked — directly contradicting the message itself, which says the code was read moments ago. The unit test asserted the sentence and never rendered the answer. Provenance is now its own value, and every variant is rendered in a test.
+
+The soak reads a real codebase several times, so it costs two to three dollars and takes a few minutes. That is why it is a separate command.
+
 **Iteration 9: knowing what it costs.** The product turns on a question costing real money the first time and nothing afterwards, and until now that number was invisible. Every read of the codebase is reported with what it actually cost, why it happened, and a running session total:
 
 ```
@@ -54,7 +60,10 @@ Measured on real questions: 40–55 seconds and roughly one US dollar to derive 
 npm install
 DOCSEARCHER_CODEBASE=/path/to/the/codebase npm run dev   # starts the agent on port 3978
 npm test                                                 # the suite, no network or credentials needed
+DOCSEARCHER_CODEBASE=/path/to/a/codebase npm run soak     # one real session end to end; costs a few dollars
 ```
+
+The soak copies the codebase before touching it, so the original is never modified.
 
 To avoid a cold start on an existing codebase:
 
@@ -113,6 +122,7 @@ src/core/claudeProposer.ts reads the codebase and proposes what is worth documen
 src/seed.ts                the seeding command -- the one thing here a developer runs rather than asks
 src/core/claudeResolver.ts rewrites a follow-up so it stands alone; reads the thread, never the codebase
 src/core/*.test.ts         the suite -- run with `npm test`
+src/soak.ts                one realistic session against a real codebase -- run with `npm run soak`
 src/core/threadContext.ts  in-memory conversation memory
 knowledge-base/       the entries themselves, as markdown
 ```

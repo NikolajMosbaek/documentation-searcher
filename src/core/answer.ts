@@ -11,7 +11,7 @@ export interface Answer {
   /** Conditions and exceptions that change the behaviour. */
   edgeCases: string[];
   /** Where this answer came from. Diagnostic only -- never shown to the asker. */
-  source: 'knowledge-base' | 'engine' | 'corrected' | 'stale' | 'miss';
+  source: 'knowledge-base' | 'engine' | 'corrected' | 'rechecked' | 'stale' | 'miss';
 }
 
 export function formatAnswer(answer: Answer): string {
@@ -72,7 +72,11 @@ export function recentlyRecheckedAnswer(): Answer {
       'I read the code for this one very recently, so I have not read it again. If it still looks wrong, the entry is a file in the repository and a developer can correct it directly.',
     behaviour: [],
     edgeCases: [],
-    source: 'stale',
+    // Its own provenance, not 'stale'. Borrowing that one attached the
+    // staleness notice to this message, and the two flatly contradicted each
+    // other: one said the code had changed and could not be checked, the other
+    // said it had just been read.
+    source: 'rechecked',
   };
 }
 
