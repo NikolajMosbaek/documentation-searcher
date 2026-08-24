@@ -2,13 +2,15 @@ import { join } from 'node:path';
 import { App } from '@microsoft/teams.apps';
 import {
   createClaudeEngine,
-  createCore,
+  createClaudeJudge,
   createClaudeResolver,
+  createCore,
   createKnowledgeBase,
   createSourceIndex,
   formatAnswer,
   InMemoryThreadStore,
   noFollowUpResolver,
+  noJudge,
   unavailableEngine,
 } from './core/index.js';
 
@@ -51,7 +53,15 @@ const resolver = CODEBASE
     })
   : noFollowUpResolver;
 
-const core = createCore(knowledgeBase, engine, sources, resolver);
+// Weighing a near miss needs a model but no codebase, like the resolver.
+const judge = CODEBASE
+  ? createClaudeJudge({
+      model: process.env.DOCSEARCHER_JUDGE_MODEL ?? process.env.DOCSEARCHER_MODEL ?? 'claude-opus-5',
+      cwd: CODEBASE,
+    })
+  : noJudge;
+
+const core = createCore(knowledgeBase, engine, { sources, resolver, judge });
 const threads = new InMemoryThreadStore();
 
 // The Microsoft 365 Agents Playground sends unauthenticated requests, which the

@@ -70,3 +70,21 @@ test('ranking prefers the entry that shares the most', () => {
   const ranked = index.rank('what happens when a free trial expires?');
   assert.equal(ranked[0]?.entry, TRIAL);
 });
+
+test('the uncertain band holds near misses, and nothing else', () => {
+  // Shares one common word with the cancel entry and clears neither bar.
+  const near = index.candidates('what happens if I cancel halfway through the month?');
+  assert.equal(near.length >= 1, true);
+  assert.equal(near[0]?.entry, CANCEL);
+
+  // A confident hit needs no second opinion, so it is not in the band.
+  const confident = index.candidates('what happens when a free trial expires?');
+  assert.equal(confident.some((match) => match.entry === TRIAL), false);
+
+  // Nothing shared at all means there is nothing to weigh.
+  assert.deepEqual(index.candidates('what colour is the office carpet?'), []);
+});
+
+test('the band is capped so a judge is never handed the whole corpus', () => {
+  assert.equal(index.candidates('cancel trial payment refund declined', 1).length <= 1, true);
+});

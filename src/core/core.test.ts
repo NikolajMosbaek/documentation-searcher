@@ -5,6 +5,7 @@ import { join } from 'node:path';
 import { test } from 'node:test';
 import { createCore } from './index.js';
 import { noFollowUpResolver, type FollowUpResolver } from './followUp.js';
+import { noJudge, type CandidateJudge } from './judge.js';
 import { createKnowledgeBase } from './knowledgeBase.js';
 import { formatAnswer } from './answer.js';
 import type { AnalysisEngine, Derivation } from './engine.js';
@@ -45,7 +46,7 @@ test('a question nothing covers is derived, stored, and then served from the sto
   const { directory, knowledgeBase } = base();
   const sources = movableSources();
   const { engine, calls } = counting(() => derivation('Credit is added to the balance.', sources.current));
-  const core = createCore(knowledgeBase, engine, sources);
+  const core = createCore(knowledgeBase, engine, { sources });
 
   const { answer: first } = await core.ask(QUESTION, THREAD);
   assert.equal(first.source, 'engine');
@@ -61,7 +62,7 @@ test('a question nothing covers is derived, stored, and then served from the sto
 test('an engine that cannot answer misses honestly and stores nothing', async () => {
   const { directory, knowledgeBase } = base();
   const { engine, calls } = counting(() => null);
-  const core = createCore(knowledgeBase, engine, movableSources());
+  const core = createCore(knowledgeBase, engine, { sources: movableSources() });
 
   const { answer: answer } = await core.ask('what colour is the office carpet?', THREAD);
   assert.equal(answer.source, 'miss');
@@ -75,7 +76,7 @@ test('when the code behind an entry moves, the entry is derived again and refres
   const sources = movableSources();
   let text = 'Credit is added to the balance.';
   const { engine, calls } = counting(() => derivation(text, sources.current));
-  const core = createCore(knowledgeBase, engine, sources);
+  const core = createCore(knowledgeBase, engine, { sources });
 
   await core.ask(QUESTION, THREAD);
   const stored = knowledgeBase.find(QUESTION)!.file;
@@ -102,7 +103,7 @@ test('an entry that cannot be refreshed is still answered, but never silently', 
   knowledgeBase.add(stored);
 
   sources.current = 'bbbb';
-  const core = createCore(knowledgeBase, { async deriveAnswer() { return null; } }, sources);
+  const core = createCore(knowledgeBase, { async deriveAnswer() { return null; } }, { sources });
   const { answer: answer } = await core.ask(QUESTION, THREAD);
 
   assert.equal(answer.source, 'stale');
@@ -118,7 +119,7 @@ test('a hand-written entry carries no fingerprint and is never called stale', as
 
   sources.current = 'something else entirely';
   const { engine, calls } = counting(() => null);
-  const core = createCore(knowledgeBase, engine, sources);
+  const core = createCore(knowledgeBase, engine, { sources });
 
   const { answer: answer } = await core.ask(QUESTION, THREAD);
   assert.equal(answer.source, 'knowledge-base');
@@ -148,7 +149,7 @@ test('a follow-up is resolved before anything else sees it', async () => {
   };
   const core = createCore(knowledgeBase, {
     async deriveAnswer(q) { asked.push(q); return engine.deriveAnswer(q); },
-  }, sources, resolver);
+  }, { sources, resolver });
 
   // A thread with history, then a question that leans on it.
   const thread = { threadId: 't', turns: [{ question: 'how do gift cards work?', resolved: 'how do gift cards work?', answeredFrom: 'engine' as const }] };
@@ -168,7 +169,7 @@ test('the first question in a thread is never rewritten', async () => {
   const resolver: FollowUpResolver = {
     async resolve(question) { resolverCalls += 1; return question; },
   };
-  const core = createCore(knowledgeBase, { async deriveAnswer() { return null; } }, movableSources(), resolver);
+  const core = createCore(knowledgeBase, { async deriveAnswer() { return null; } }, { sources: movableSources(), resolver });
 
   // Reads as dependent, but there is nothing to depend on.
   const exchange = await core.ask('and what about them?', { threadId: 't', turns: [] });
@@ -183,7 +184,7 @@ test('a self-contained question mid-thread is not sent for rewriting', async () 
   const resolver: FollowUpResolver = {
     async resolve(question) { resolverCalls += 1; return question; },
   };
-  const core = createCore(knowledgeBase, { async deriveAnswer() { return null; } }, movableSources(), resolver);
+  const core = createCore(knowledgeBase, { async deriveAnswer() { return null; } }, { sources: movableSources(), resolver });
   const thread = { threadId: 't', turns: [{ question: 'first', resolved: 'first', answeredFrom: 'engine' as const }] };
 
   await core.ask('What happens when a customer redeems a voucher at checkout?', thread);
@@ -194,7 +195,7 @@ test('a self-contained question mid-thread is not sent for rewriting', async () 
 test('a resolver that fails leaves the question exactly as asked', async () => {
   const { directory, knowledgeBase } = base();
   const failing: FollowUpResolver = { async resolve(question) { return question; } };
-  const core = createCore(knowledgeBase, { async deriveAnswer() { return null; } }, movableSources(), failing);
+  const core = createCore(knowledgeBase, { async deriveAnswer() { return null; } }, { sources: movableSources(), resolver: failing });
   const thread = { threadId: 't', turns: [{ question: 'first', resolved: 'first', answeredFrom: 'engine' as const }] };
 
   const exchange = await core.ask('and them?', thread);
@@ -205,7 +206,7 @@ test('a resolver that fails leaves the question exactly as asked', async () => {
 
 test('with no resolver configured, nothing is rewritten', async () => {
   const { directory, knowledgeBase } = base();
-  const core = createCore(knowledgeBase, { async deriveAnswer() { return null; } }, movableSources(), noFollowUpResolver);
+  const core = createCore(knowledgeBase, { async deriveAnswer() { return null; } }, { sources: movableSources(), resolver: noFollowUpResolver });
   const thread = { threadId: 't', turns: [{ question: 'first', resolved: 'first', answeredFrom: 'engine' as const }] };
 
   const exchange = await core.ask('and them?', thread);
@@ -221,7 +222,7 @@ test('flagging an answer as wrong re-reads the code and replaces the entry', asy
   const engine: AnalysisEngine = {
     async deriveAnswer(_q, guidance) { seen.push(guidance); return derivation(text, sources.current); },
   };
-  const core = createCore(knowledgeBase, engine, sources);
+  const core = createCore(knowledgeBase, engine, { sources });
 
   const first = await core.ask(QUESTION, THREAD);
   const stored = first.entryFile!;
@@ -255,7 +256,7 @@ test('a dispute the code does not support leaves the answer standing', async () 
   // The engine re-reads and reports the same thing: the objector was mistaken.
   const core = createCore(knowledgeBase, {
     async deriveAnswer() { return derivation(original, sources.current); },
-  }, sources);
+  }, { sources });
 
   const first = await core.ask(QUESTION, THREAD);
   const thread = {
@@ -273,7 +274,7 @@ test('a dispute the code cannot be re-read for changes nothing', async () => {
   const { directory, knowledgeBase } = base();
   const sources = movableSources();
   const stored = knowledgeBase.add(derivation('Credit is added to the balance.', sources.current));
-  const core = createCore(knowledgeBase, { async deriveAnswer() { return null; } }, sources);
+  const core = createCore(knowledgeBase, { async deriveAnswer() { return null; } }, { sources });
 
   const thread = {
     threadId: 't',
@@ -291,9 +292,107 @@ test('a dispute with no previous turn is treated as an ordinary question', async
   let asked: string | undefined;
   const core = createCore(knowledgeBase, {
     async deriveAnswer(q) { asked = q; return null; },
-  }, movableSources());
+  }, { sources: movableSources() });
 
   await core.ask('that is wrong', { threadId: 't', turns: [] });
   assert.equal(asked, 'that is wrong');
+  rmSync(directory, { recursive: true, force: true });
+});
+
+/** A knowledge base holding one entry that lexical retrieval will not be sure about. */
+async function withNearMiss() {
+  const { directory, knowledgeBase } = base();
+  const sources = movableSources();
+  knowledgeBase.add({
+    ...derivation('Access continues until the end of the period already paid for.', sources.current),
+    question: 'what happens if I cancel mid-period?',
+    title: 'Cancelling a subscription mid-period',
+    keywords: ['cancel', 'mid-period', 'subscription'],
+  });
+  return { directory, knowledgeBase, sources };
+}
+
+const REPHRASED = 'what happens if I cancel halfway through the month?';
+
+test('a near miss retrieval cannot decide is put to the judge, not to the engine', async () => {
+  const { directory, knowledgeBase, sources } = await withNearMiss();
+  let offered: string[] = [];
+  const { engine, calls } = counting(() => derivation('fresh', sources.current));
+  const judge: CandidateJudge = {
+    async choose(_q, candidates) { offered = candidates.map((c) => c.title); return candidates[0]; },
+  };
+  const core = createCore(knowledgeBase, engine, { sources, judge });
+
+  const { answer } = await core.ask(REPHRASED, THREAD);
+  assert.deepEqual(offered, ['Cancelling a subscription mid-period']);
+  assert.equal(answer.source, 'knowledge-base');
+  assert.equal(calls(), 0, 'a derivation was paid for despite a usable stored answer');
+  rmSync(directory, { recursive: true, force: true });
+});
+
+test('a judge that declines lets the question be derived properly', async () => {
+  const { directory, knowledgeBase, sources } = await withNearMiss();
+  const { engine, calls } = counting(() => derivation('fresh', sources.current));
+  const core = createCore(knowledgeBase, engine, {
+    sources,
+    judge: { async choose() { return undefined; } },
+  });
+
+  const { answer } = await core.ask(REPHRASED, THREAD);
+  assert.equal(answer.source, 'engine');
+  assert.equal(calls(), 1);
+  rmSync(directory, { recursive: true, force: true });
+});
+
+test('with no judge configured a near miss is derived, as before', async () => {
+  const { directory, knowledgeBase, sources } = await withNearMiss();
+  const { engine, calls } = counting(() => derivation('fresh', sources.current));
+  const core = createCore(knowledgeBase, engine, { sources, judge: noJudge });
+
+  await core.ask(REPHRASED, THREAD);
+  assert.equal(calls(), 1);
+  rmSync(directory, { recursive: true, force: true });
+});
+
+test('the judge is not consulted when retrieval is already sure', async () => {
+  const { directory, knowledgeBase, sources } = await withNearMiss();
+  let consulted = 0;
+  const core = createCore(knowledgeBase, { async deriveAnswer() { return null; } }, {
+    sources,
+    judge: { async choose() { consulted += 1; return undefined; } },
+  });
+
+  await core.ask('what happens if I cancel mid-period?', THREAD);
+  assert.equal(consulted, 0, 'a confident hit was sent for a second opinion');
+  rmSync(directory, { recursive: true, force: true });
+});
+
+test('the judge is not consulted when nothing is even close', async () => {
+  const { directory, knowledgeBase, sources } = await withNearMiss();
+  let consulted = 0;
+  const core = createCore(knowledgeBase, { async deriveAnswer() { return null; } }, {
+    sources,
+    judge: { async choose() { consulted += 1; return undefined; } },
+  });
+
+  await core.ask('what colour is the office carpet?', THREAD);
+  assert.equal(consulted, 0, 'the judge was asked to weigh nothing');
+  rmSync(directory, { recursive: true, force: true });
+});
+
+test('an entry the judge rescued is still checked for staleness', async () => {
+  const { directory, knowledgeBase, sources } = await withNearMiss();
+  let text = 'Access now ends immediately on cancellation.';
+  const { engine, calls } = counting(() => derivation(text, sources.current));
+  const core = createCore(knowledgeBase, engine, {
+    sources,
+    judge: { async choose(_q, candidates) { return candidates[0]; } },
+  });
+
+  sources.current = 'the code has moved';
+  const { answer } = await core.ask(REPHRASED, THREAD);
+
+  assert.equal(calls(), 1, 'a rescued entry skipped the staleness check');
+  assert.equal(answer.shortAnswer, text);
   rmSync(directory, { recursive: true, force: true });
 });

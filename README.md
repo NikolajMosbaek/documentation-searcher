@@ -4,6 +4,12 @@ Ask a codebase about its own behaviour from Microsoft Teams. See `PRD.md` for wh
 
 ## Where this is right now
 
+**Iteration 8: a second opinion on near misses.** Lexical retrieval is deliberately reluctant, which means it misses questions an entry really does answer — and a miss costs a derivation. When retrieval ranks something but is not confident, the candidates now go to a model that decides whether any of them actually answers the question. Cents and five seconds instead of a dollar and a minute.
+
+It is gated at both ends: a confident hit is never second-guessed, and a question sharing no word with anything is never sent, because there is nothing to weigh. The judge is told to choose nothing when in doubt — a wrong rescue answers a question nobody asked, while a wrong refusal merely costs the derivation that would have happened anyway.
+
+Measured on five questions: three near misses, two rescued and one conservatively declined; two unrelated questions cost nothing.
+
 **Iteration 7: guided seeding.** `npm run seed` reads the codebase and proposes areas worth documenting first, as a checklist in `seed-plan.md`. Nothing is ticked and nothing is written. A developer ticks what they want, edits or deletes questions, and runs `npm run seed -- --write` — which answers only what was ticked, skipping anything the knowledge base already covers.
 
 That two-step is the feature, not scaffolding around it: the PRD asks for "a reviewed baseline rather than an unattended bulk index", so there is deliberately no flag that seeds everything. Review of what gets written is the diff, because entries are files.
@@ -59,6 +65,7 @@ Without `DOCSEARCHER_CODEBASE` the bot still runs and still answers from the kno
 | `DOCSEARCHER_MODEL` | `claude-opus-5` | The model behind the analysis engine. |
 | `DOCSEARCHER_MAX_USD` | `5` | Ceiling for a single derivation. Below about `1.5` real questions get cut off. |
 | `DOCSEARCHER_RESOLVER_MODEL` | falls back to `DOCSEARCHER_MODEL` | The model that rewrites follow-up questions. |
+| `DOCSEARCHER_JUDGE_MODEL` | falls back to `DOCSEARCHER_MODEL` | The model that weighs near-miss candidates. |
 | `DOCSEARCHER_SEED_AREAS` | `8` | How many areas seeding proposes. |
 | `DOCSEARCHER_SEED_PLAN` | `./seed-plan.md` | Where the seeding checklist lives. |
 
@@ -88,6 +95,8 @@ src/core/sourceIndex.ts    content-hashes the files an answer came from, so stal
 src/core/retrieval.ts      BM25 over the entries; in-memory, rebuilt whenever one is written
 src/core/followUp.ts       decides whether a question leans on the conversation, and the resolver interface
 src/core/correction.ts     spots someone disputing an answer, and turns the objection into something to check
+src/core/judge.ts          the second-opinion interface, for entries retrieval could not decide about
+src/core/claudeJudge.ts    weighs near-miss candidates against the question; reads neither codebase nor files
 src/core/seeding.ts        the seeding plan: its shape, its format, and a forgiving parser for a hand-edited one
 src/core/claudeProposer.ts reads the codebase and proposes what is worth documenting first
 src/seed.ts                the seeding command -- the one thing here a developer runs rather than asks
@@ -136,4 +145,4 @@ Nothing rate-limits a dispute. Flagging an answer costs a full derivation, so an
 
 Resolving a follow-up costs four to six seconds, which is most of what an asker waits for when the answer is already stored. A smaller model was measured and is *slower*, so the cost is very likely per-call subprocess overhead in the Agent SDK rather than inference — a plain Messages API call would suit a text rewrite far better.
 
-Retrieval is lexical, so the gap that remains is semantic: a question sharing no vocabulary with an entry will not find it, however plainly it means the same thing. Asking about "cancelling halfway through the month" does not reach an entry written about "mid-period", and at roughly a dollar per derivation that is the most expensive weakness left. Closing it means either a re-ranking pass by a cheap model over the top few candidates, or embeddings — and embeddings mean storage, which the constitution defers until a fake genuinely cannot cut it.
+Retrieval is lexical, and a second opinion now covers the band where it ranks something without being sure. What is still uncovered is a question sharing *no* vocabulary at all with the entry that answers it: nothing ranks, so there is nothing to weigh, and no amount of judging reaches it. Closing that means embeddings, which mean storage — deferred until a fake genuinely cannot cut it.

@@ -11,6 +11,12 @@ import type { Entry } from './knowledgeBase.js';
  */
 export interface RetrievalIndex {
   best(question: string): Match | undefined;
+  /**
+   * Entries that share something with the question but not enough to be served
+   * on that evidence alone. The band between "obviously right" and "nothing at
+   * all", where a cheap second opinion is worth more than a dollar derivation.
+   */
+  candidates(question: string, limit?: number): Match[];
   /** Exposed so the tuning of the threshold can be inspected and tested. */
   rank(question: string): Match[];
 }
@@ -100,12 +106,23 @@ export function createRetrievalIndex(entries: Entry[]): RetrievalIndex {
     return (frequency * (K1 + 1)) / (frequency + K1 * (1 - B + (B * length) / averageLength));
   }
 
+  function clears(match: Match): boolean {
+    return match.score >= MIN_SCORE && match.coverage >= MIN_COVERAGE;
+  }
+
   return {
     rank,
     best(question: string): Match | undefined {
       const top = rank(question)[0];
-      if (!top) return undefined;
-      return top.score >= MIN_SCORE && top.coverage >= MIN_COVERAGE ? top : undefined;
+      return top && clears(top) ? top : undefined;
+    },
+    candidates(question: string, limit = 5): Match[] {
+      // Only the uncertain band. Anything clearing the bars needs no second
+      // opinion, and anything scoring zero shares no word with the question --
+      // there is nothing there for a judge to weigh.
+      return rank(question)
+        .filter((match) => !clears(match))
+        .slice(0, limit);
     },
   };
 }

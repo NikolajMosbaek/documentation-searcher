@@ -2,6 +2,7 @@ import { missAnswer, recheckFailedAnswer, type Answer } from './answer.js';
 import type { Entry, KnowledgeBase } from './knowledgeBase.js';
 import type { SourceIndex } from './sourceIndex.js';
 import { looksDependent, noFollowUpResolver, type FollowUpResolver } from './followUp.js';
+import { noJudge, type CandidateJudge } from './judge.js';
 import { asGuidance, looksLikeCorrection } from './correction.js';
 import type { AnalysisEngine } from './engine.js';
 import type { ThreadContext, Turn } from './threadContext.js';
@@ -18,6 +19,10 @@ export {
 } from './knowledgeBase.js';
 export type { Entry, KnowledgeBase } from './knowledgeBase.js';
 export { asGuidance, looksLikeCorrection } from './correction.js';
+export { noJudge } from './judge.js';
+export type { CandidateJudge } from './judge.js';
+export { createClaudeJudge } from './claudeJudge.js';
+export type { ClaudeJudgeConfig } from './claudeJudge.js';
 export { chosenQuestions, formatSeedPlan, parseSeedPlan } from './seeding.js';
 export type { Area, AreaProposer } from './seeding.js';
 export { createClaudeProposer } from './claudeProposer.js';
@@ -59,12 +64,27 @@ export interface Core {
  * The product. Transport-agnostic by design: it knows nothing about Teams, and
  * a second front end would call exactly this.
  */
+/**
+ * Everything the core can be given beyond the two things it cannot work
+ * without. All optional, and each one absent means that behaviour is simply
+ * not available rather than broken.
+ */
+export interface CoreOptions {
+  /** Without it, no stored answer can be checked for staleness. */
+  sources?: SourceIndex;
+  /** Without it, a follow-up is taken literally. */
+  resolver?: FollowUpResolver;
+  /** Without it, a near miss is derived from scratch rather than reconsidered. */
+  judge?: CandidateJudge;
+}
+
 export function createCore(
   knowledgeBase: KnowledgeBase,
   engine: AnalysisEngine,
-  sources?: SourceIndex,
-  resolver: FollowUpResolver = noFollowUpResolver,
+  options: CoreOptions = {},
 ): Core {
+  const { sources, resolver = noFollowUpResolver, judge = noJudge } = options;
+
   return {
     async ask(asked: string, thread: ThreadContext): Promise<Exchange> {
       // A dispute is not a new question -- it acts on the answer just given.
@@ -81,7 +101,9 @@ export function createCore(
           ? await resolver.resolve(asked, thread)
           : asked;
 
-      const known = knowledgeBase.find(question);
+      // Lexical retrieval is deliberately reluctant, so a near miss gets a
+      // second opinion before anything is paid for. Cents against a dollar.
+      const known = knowledgeBase.find(question) ?? (await reconsider(question));
       if (known) {
         if (!isStale(known, sources)) {
           return { answer: known.answer, question, entryFile: known.file };
@@ -127,6 +149,17 @@ export function createCore(
       return { answer: derived.answer, question, entryFile: stored };
     },
   };
+
+  /**
+   * Ask whether anything already stored answers a question that retrieval was
+   * not confident enough to answer with. Skipped entirely when retrieval found
+   * nothing at all: there is no shared word to weigh, so there is nothing to ask.
+   */
+  async function reconsider(question: string): Promise<Entry | undefined> {
+    const maybe = knowledgeBase.candidates(question);
+    if (maybe.length === 0) return undefined;
+    return judge.choose(question, maybe);
+  }
 
   /**
    * Act on someone flagging the previous answer as wrong.

@@ -206,6 +206,8 @@ export interface KnowledgeBase {
   find(question: string): Entry | undefined;
   /** The entry stored in a given file, so a disputed answer can be traced back. */
   byFile(file: string): Entry | undefined;
+  /** Entries that might answer the question but are not certain enough to serve. */
+  candidates(question: string, limit?: number): Entry[];
   /** Store a derivation and make it findable immediately. */
   add(derivation: Derivation): Entry;
   /**
@@ -235,6 +237,10 @@ export function createKnowledgeBase(directory: string): KnowledgeBase {
 
     byFile(file: string): Entry | undefined {
       return entries.find((entry) => entry.file === file);
+    },
+
+    candidates(question: string, limit?: number): Entry[] {
+      return index.candidates(question, limit).map((match) => match.entry);
     },
 
     add(derivation: Derivation): Entry {
