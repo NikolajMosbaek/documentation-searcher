@@ -3,10 +3,12 @@ import { App } from '@microsoft/teams.apps';
 import {
   createClaudeEngine,
   createCore,
+  createClaudeResolver,
   createKnowledgeBase,
   createSourceIndex,
   formatAnswer,
   InMemoryThreadStore,
+  noFollowUpResolver,
   unavailableEngine,
 } from './core/index.js';
 
@@ -40,7 +42,16 @@ console.log(
 // answers are served as written rather than guessed about.
 const sources = CODEBASE ? createSourceIndex(CODEBASE) : undefined;
 
-const core = createCore(knowledgeBase, engine, sources);
+// Rewriting a follow-up needs a model but no codebase, so it is available
+// wherever the engine is.
+const resolver = CODEBASE
+  ? createClaudeResolver({
+      model: process.env.DOCSEARCHER_RESOLVER_MODEL ?? process.env.DOCSEARCHER_MODEL ?? 'claude-opus-5',
+      cwd: CODEBASE,
+    })
+  : noFollowUpResolver;
+
+const core = createCore(knowledgeBase, engine, sources, resolver);
 const threads = new InMemoryThreadStore();
 
 // The Microsoft 365 Agents Playground sends unauthenticated requests, which the
@@ -56,10 +67,14 @@ app.on('message', async ({ activity, send }) => {
   const threadId = activity.conversation.id;
   const question = activity.text?.trim() ?? '';
 
-  const answer = await core.ask(question, threads.get(threadId));
-  threads.record(threadId, { question, answeredFrom: answer.source });
+  const exchange = await core.ask(question, threads.get(threadId));
+  threads.record(threadId, {
+    question,
+    resolved: exchange.question,
+    answeredFrom: exchange.answer.source,
+  });
 
-  await send(formatAnswer(answer));
+  await send(formatAnswer(exchange.answer));
 });
 
 const port = Number(process.env.PORT) || 3978;

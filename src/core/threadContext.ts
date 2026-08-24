@@ -5,7 +5,14 @@ import type { Answer } from './answer.js';
  * genuinely can't cut it.
  */
 export interface Turn {
+  /** What the asker typed. */
   question: string;
+  /**
+   * The same question made to stand on its own. Equal to `question` unless it
+   * was a follow-up. Later turns resolve against this rather than the raw text,
+   * so a chain of follow-ups does not decay one reference at a time.
+   */
+  resolved: string;
   /** Tracks the answer's own provenance rather than restating it. */
   answeredFrom: Answer['source'];
 }
