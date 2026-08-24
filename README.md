@@ -4,6 +4,10 @@ Ask a codebase about its own behaviour from Microsoft Teams. See `PRD.md` for wh
 
 ## Where this is right now
 
+**Iteration 7: guided seeding.** `npm run seed` reads the codebase and proposes areas worth documenting first, as a checklist in `seed-plan.md`. Nothing is ticked and nothing is written. A developer ticks what they want, edits or deletes questions, and runs `npm run seed -- --write` — which answers only what was ticked, skipping anything the knowledge base already covers.
+
+That two-step is the feature, not scaffolding around it: the PRD asks for "a reviewed baseline rather than an unattended bulk index", so there is deliberately no flag that seeds everything. Review of what gets written is the diff, because entries are files.
+
 **Iteration 6: correcting an answer from the thread.** Saying *"that's wrong"* in the conversation makes the bot read the code again and rewrite the entry that produced the answer. The PRD's four maintenance paths are now all present: the bot fills gaps, the bot refreshes what went stale, developers edit the files, and anyone can flag a bad answer where they found it.
 
 An objection is never treated as fact. It is handed to the engine as a pointer at what to re-read, with an instruction to contradict the objector if the code does — because the PRD makes the code the only source of truth, and someone in a chat thread is not the code. Measured against a deliberately false objection, the bot re-read and stood by its original answer.
@@ -36,6 +40,16 @@ DOCSEARCHER_CODEBASE=/path/to/the/codebase npm run dev   # starts the agent on p
 npm test                                                 # the suite, no network or credentials needed
 ```
 
+To avoid a cold start on an existing codebase:
+
+```sh
+DOCSEARCHER_CODEBASE=/path/to/the/codebase npm run seed            # proposes seed-plan.md, writes nothing
+$EDITOR seed-plan.md                                               # tick what is worth documenting
+DOCSEARCHER_CODEBASE=/path/to/the/codebase npm run seed -- --write # answers only what was ticked
+```
+
+`seed-plan.md` is a working file. Commit it if a record of what was chosen is useful, or delete it.
+
 Without `DOCSEARCHER_CODEBASE` the bot still runs and still answers from the knowledge base, but it cannot fill a miss — it says so once at startup.
 
 | Variable | Default | What it does |
@@ -45,6 +59,8 @@ Without `DOCSEARCHER_CODEBASE` the bot still runs and still answers from the kno
 | `DOCSEARCHER_MODEL` | `claude-opus-5` | The model behind the analysis engine. |
 | `DOCSEARCHER_MAX_USD` | `5` | Ceiling for a single derivation. Below about `1.5` real questions get cut off. |
 | `DOCSEARCHER_RESOLVER_MODEL` | falls back to `DOCSEARCHER_MODEL` | The model that rewrites follow-up questions. |
+| `DOCSEARCHER_SEED_AREAS` | `8` | How many areas seeding proposes. |
+| `DOCSEARCHER_SEED_PLAN` | `./seed-plan.md` | Where the seeding checklist lives. |
 
 Authentication is whatever the Claude Agent SDK already resolves from the environment. No key is read, stored, or committed by this project.
 
@@ -72,6 +88,9 @@ src/core/sourceIndex.ts    content-hashes the files an answer came from, so stal
 src/core/retrieval.ts      BM25 over the entries; in-memory, rebuilt whenever one is written
 src/core/followUp.ts       decides whether a question leans on the conversation, and the resolver interface
 src/core/correction.ts     spots someone disputing an answer, and turns the objection into something to check
+src/core/seeding.ts        the seeding plan: its shape, its format, and a forgiving parser for a hand-edited one
+src/core/claudeProposer.ts reads the codebase and proposes what is worth documenting first
+src/seed.ts                the seeding command -- the one thing here a developer runs rather than asks
 src/core/claudeResolver.ts rewrites a follow-up so it stands alone; reads the thread, never the codebase
 src/core/*.test.ts         the suite -- run with `npm test`
 src/core/threadContext.ts  in-memory conversation memory
@@ -111,7 +130,7 @@ A malformed entry is skipped with a warning rather than taking down the whole kn
 
 ## Deliberately not built yet
 
-Guided seeding and real Teams registration.
+Real Teams registration. Nothing in this project has yet run inside an actual Teams client — only against the protocol.
 
 Nothing rate-limits a dispute. Flagging an answer costs a full derivation, so anyone who can reach the bot can spend money by repeatedly disagreeing with it.
 

@@ -18,6 +18,10 @@ export {
 } from './knowledgeBase.js';
 export type { Entry, KnowledgeBase } from './knowledgeBase.js';
 export { asGuidance, looksLikeCorrection } from './correction.js';
+export { chosenQuestions, formatSeedPlan, parseSeedPlan } from './seeding.js';
+export type { Area, AreaProposer } from './seeding.js';
+export { createClaudeProposer } from './claudeProposer.js';
+export type { ClaudeProposerConfig } from './claudeProposer.js';
 export { looksDependent, noFollowUpResolver } from './followUp.js';
 export type { FollowUpResolver } from './followUp.js';
 export { createClaudeResolver } from './claudeResolver.js';
