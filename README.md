@@ -6,6 +6,10 @@ Ask a codebase about its own behaviour from Microsoft Teams. See `PRD.md` for wh
 
 ## Where this is right now
 
+**Iteration 12: one entry per behaviour, not one per phrasing.** Two ways of asking the same thing could both miss, both be derived, and leave two entries saying the same thing — with retrieval then picking between them arbitrarily. An entry now carries every question known to reach it, and a derivation that says the same thing about the same code attaches its question to the entry that already exists instead of landing beside it.
+
+Sameness needs both halves: the identical content hash, so it came from exactly the same files, *and* wording similar enough to be the same behaviour. Same code alone is not enough, because one file describes many behaviours.
+
 **Iteration 11: running the tests without being asked.** CI runs the typecheck, the suite and the build on every push to `main` and every pull request, on Node 20.11 and 22.
 
 It settles something these notes had asserted and never tested: that the suite needs no network and no credentials. Every local run so far has had Claude Code authenticated in the environment, so a test that quietly depended on it would have passed all night. A clean runner cannot, and does not.
@@ -142,11 +146,14 @@ One markdown file per entry, hand-editable and reviewable in a pull request:
 ```markdown
 ---
 title: Cancelling a subscription mid-period
-question: what happens if I cancel halfway through a month?
 keywords: cancel, subscription, mid-period, refund
 derived-from: src/billing/subscription.ts
 fingerprint: 8e923ebab910d61b
 ---
+
+## Questions
+- what happens if I cancel halfway through a month?
+- do I get a refund if I stop mid-cycle?
 
 ## Short answer
 One or two sentences.
@@ -158,7 +165,7 @@ One or two sentences.
 - Conditions and exceptions
 ```
 
-`question`, `derived-from`, and `fingerprint` are written by the bot. `derived-from` records which files the answer came from and `fingerprint` is a content hash of those files at the moment it was written; together they are what makes verify-on-read work. `question` is the exact question that paid for the entry, stored so that asking it again is guaranteed to find it — keyword matching cannot promise that, because the keywords are the model's words for the behaviour and the question is the asker's words for the question.
+`## Questions`, `derived-from`, and `fingerprint` are written by the bot. Questions live in a section rather than in frontmatter because they routinely contain commas, which is how every other list here is separated; a single `question:` field is still read, so entries written before this stay readable. `derived-from` records which files the answer came from and `fingerprint` is a content hash of those files at the moment it was written; together they are what makes verify-on-read work. The questions are the exact wordings known to reach this entry, stored so that asking one of them again is guaranteed to find it — keyword matching cannot promise that, because the keywords are the model's words for the behaviour and the question is the asker's words for the question.
 
 All three are metadata and never shown to an asker. `derived-from` is the only place a file path may appear anywhere in the knowledge base. Hand-written entries leave all three out, and an entry with no fingerprint is never treated as stale — a developer wrote it deliberately and owns it.
 

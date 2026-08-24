@@ -151,10 +151,7 @@ export function createCore(
         if (refreshed) {
           recordSpend('refresh', refreshed, question);
           try {
-            // Keep the question the entry was created under. A refresh may have
-            // been triggered by a different phrasing that retrieval matched, and
-            // overwriting would revoke the original asker's guarantee.
-            knowledgeBase.replace(known, { ...refreshed, question: known.question || question });
+            knowledgeBase.replace(known, refreshed);
           } catch (error) {
             const reason = error instanceof Error ? error.message : String(error);
             console.warn(`[WARN] refreshed an entry but could not rewrite it: ${reason}`);
@@ -239,7 +236,7 @@ export function createCore(
     let entryFile = previous.entryFile;
     try {
       entryFile = existing
-        ? knowledgeBase.replace(existing, { ...rederived, question: existing.question || question }).file
+        ? knowledgeBase.replace(existing, rederived).file
         : knowledgeBase.add({ ...rederived, question }).file;
     } catch (error) {
       const reason = error instanceof Error ? error.message : String(error);

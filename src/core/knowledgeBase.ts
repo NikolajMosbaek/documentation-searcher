@@ -2,13 +2,17 @@ import { existsSync, readdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { findCodeReferences, type Answer } from './answer.js';
 import type { Derivation } from './engine.js';
-import { createRetrievalIndex } from './retrieval.js';
+import { createRetrievalIndex, tokenize } from './retrieval.js';
 
 export interface Entry {
   file: string;
   title: string;
-  /** The question that produced this entry, if a machine wrote it. */
-  question: string;
+  /**
+   * Every question known to be answered by this entry. One behaviour can be
+   * asked about in many ways, and each of those phrasings is a guaranteed way
+   * back to it. Empty for a hand-written entry.
+   */
+  questions: string[];
   keywords: string[];
   /** Paths this entry was derived from, when a machine wrote it. Metadata only. */
   derivedFrom: string[];
@@ -42,9 +46,18 @@ export function parseEntry(file: string, raw: string): Entry {
   const keywords = splitList(fields.get('keywords')).map((keyword) => keyword.toLowerCase());
   const derivedFrom = splitList(fields.get('derived-from'));
   const fingerprint = fields.get('fingerprint') ?? '';
-  const question = fields.get('question') ?? '';
 
   const sections = splitSections(body);
+
+  // Questions live in a section rather than frontmatter because they routinely
+  // contain commas, which is how every other list here is separated. A single
+  // `question:` field is still read, so entries written before this remain
+  // readable and a developer can still add one by hand that way.
+  const questions = unique([
+    ...(fields.get('question') ? [fields.get('question')!.trim()] : []),
+    ...(sections.get('questions') ?? []).map(stripListMarker),
+  ]);
+
   const shortAnswer = sections.get('short answer');
   if (!shortAnswer) throw new Error(`${file}: missing a '## Short answer' section`);
 
@@ -55,7 +68,17 @@ export function parseEntry(file: string, raw: string): Entry {
     source: 'knowledge-base',
   };
 
-  return { file, title, question, keywords, derivedFrom, fingerprint, answer };
+  return { file, title, questions, keywords, derivedFrom, fingerprint, answer };
+}
+
+function unique(values: string[]): string[] {
+  const seen = new Set<string>();
+  return values.filter((value) => {
+    const key = normalizeQuestion(value);
+    if (!value.trim() || seen.has(key)) return false;
+    seen.add(key);
+    return true;
+  });
 }
 
 function splitList(value: string | undefined): string[] {
@@ -90,21 +113,29 @@ function stripListMarker(line: string): string {
  * The inverse of `parseEntry`. Anything the bot writes has to come back out of
  * `parseEntry` unchanged, so the two are edited together or not at all.
  */
-export function serializeEntry(derivation: Derivation): string {
-  const { answer, title, question, keywords, derivedFrom, fingerprint } = derivation;
+export function serializeEntry(derivation: Derivation, questions: string[] = []): string {
+  const { answer, title, keywords, derivedFrom, fingerprint } = derivation;
+  // Existing questions keep their order and the new one is appended, so a
+  // merge shows up as one added line rather than a reshuffled list.
+  const asked = unique([...questions, derivation.question]);
 
   const lines = [
     '---',
     `title: ${oneLine(title)}`,
-    `question: ${oneLine(question)}`,
     `keywords: ${keywords.map(commaFree).filter(Boolean).join(', ')}`,
     `derived-from: ${derivedFrom.map(commaFree).filter(Boolean).join(', ')}`,
     `fingerprint: ${fingerprint}`,
     '---',
     '',
-    '## Short answer',
-    oneLine(answer.shortAnswer),
   ];
+
+  if (asked.length > 0) {
+    lines.push('## Questions');
+    for (const question of asked) lines.push(`- ${oneLine(question)}`);
+    lines.push('');
+  }
+
+  lines.push('## Short answer', oneLine(answer.shortAnswer));
 
   if (answer.behaviour.length > 0) {
     lines.push('', '## What happens');
@@ -183,14 +214,44 @@ export function findEntry(entries: Entry[], question: string): Entry | undefined
   return findWithIndex(entries, createRetrievalIndex(entries), question);
 }
 
+/**
+ * Two derivations are the same behaviour when they came from exactly the same
+ * code and say the same thing. Same code alone is not enough -- one file
+ * describes many behaviours -- and similar wording alone is not enough either.
+ */
+export function isDuplicate(entry: Entry, derivation: Derivation): boolean {
+  if (!entry.fingerprint || entry.fingerprint !== derivation.fingerprint) return false;
+  return similarity(entry.answer.shortAnswer, derivation.answer.shortAnswer) >= DUPLICATE_SIMILARITY;
+}
+
+/**
+ * Measured rather than guessed. The same behaviour re-derived with slightly
+ * different wording scores about 0.64; two different behaviours drawn from the
+ * same file score about 0.14. The margin above this line is thin, which is the
+ * right way round -- failing to merge leaves a duplicate, which is merely the
+ * situation before any of this, while merging wrongly loses a behaviour.
+ */
+const DUPLICATE_SIMILARITY = 0.6;
+
+/** Share of the words the two have in common, ignoring order and repetition. */
+export function similarity(a: string, b: string): number {
+  const left = new Set(tokenize(a));
+  const right = new Set(tokenize(b));
+  if (left.size === 0 || right.size === 0) return 0;
+
+  let shared = 0;
+  for (const word of left) if (right.has(word)) shared += 1;
+  return shared / (left.size + right.size - shared);
+}
+
 function findWithIndex(
   entries: Entry[],
   index: ReturnType<typeof createRetrievalIndex>,
   question: string,
 ): Entry | undefined {
   const normalized = normalizeQuestion(question);
-  const sameQuestion = entries.find(
-    (entry) => entry.question && normalizeQuestion(entry.question) === normalized,
+  const sameQuestion = entries.find((entry) =>
+    entry.questions.some((asked) => normalizeQuestion(asked) === normalized),
   );
   if (sameQuestion) return sameQuestion;
 
@@ -208,12 +269,18 @@ export interface KnowledgeBase {
   byFile(file: string): Entry | undefined;
   /** Entries that might answer the question but are not certain enough to serve. */
   candidates(question: string, limit?: number): Entry[];
-  /** Store a derivation and make it findable immediately. */
+  /**
+   * Store a derivation and make it findable immediately -- unless an entry
+   * already says the same thing about the same code, in which case the new
+   * question is attached to that entry instead of a near-duplicate being
+   * created beside it.
+   */
   add(derivation: Derivation): Entry;
   /**
    * Refresh an entry in place after the code it described changed. Same file, so
    * the diff a developer reviews shows what moved rather than an unrelated pair
-   * of additions and deletions.
+   * of additions and deletions. Every question already known to reach the entry
+   * keeps reaching it.
    */
   replace(entry: Entry, derivation: Derivation): Entry;
   readonly size: number;
@@ -244,6 +311,16 @@ export function createKnowledgeBase(directory: string): KnowledgeBase {
     },
 
     add(derivation: Derivation): Entry {
+      // Two phrasings of the same question both miss, both get derived, and the
+      // knowledge base ends up with two entries saying the same thing that
+      // retrieval then picks between arbitrarily. Attaching the question to the
+      // entry that already exists is the whole fix.
+      const same = entries.find((entry) => isDuplicate(entry, derivation));
+      if (same) {
+        console.log(`[INFO] ${same.file} already covers this; attaching the question to it`);
+        return this.replace(same, derivation);
+      }
+
       const file = availableFile(directory, slugify(derivation.title));
       writeFileSync(join(directory, file), serializeEntry(derivation), 'utf8');
 
@@ -254,9 +331,13 @@ export function createKnowledgeBase(directory: string): KnowledgeBase {
     },
 
     replace(existing: Entry, derivation: Derivation): Entry {
-      writeFileSync(join(directory, existing.file), serializeEntry(derivation), 'utf8');
+      // Keep every question already known to reach this entry. A refresh may
+      // have been triggered by one of several phrasings, and the others must
+      // not stop working because of it.
+      const questions = existing.questions;
+      writeFileSync(join(directory, existing.file), serializeEntry(derivation, questions), 'utf8');
 
-      const refreshed = toEntry(existing.file, derivation);
+      const refreshed = toEntry(existing.file, derivation, questions);
       const at = entries.indexOf(existing);
       if (at === -1) entries.push(refreshed);
       else entries[at] = refreshed;
@@ -270,11 +351,11 @@ export function createKnowledgeBase(directory: string): KnowledgeBase {
   };
 }
 
-function toEntry(file: string, derivation: Derivation): Entry {
+function toEntry(file: string, derivation: Derivation, questions: string[] = []): Entry {
   return {
     file,
     title: derivation.title,
-    question: derivation.question,
+    questions: unique([...questions, derivation.question]),
     keywords: derivation.keywords,
     derivedFrom: derivation.derivedFrom,
     fingerprint: derivation.fingerprint,

@@ -131,7 +131,7 @@ function toDocument(entry: Entry): Document {
   const fields: FieldText = {
     keywords: entry.keywords.join(' '),
     title: entry.title,
-    question: entry.question,
+    question: entry.questions.join(' '),
     shortAnswer: entry.answer.shortAnswer,
     body: [...entry.answer.behaviour, ...entry.answer.edgeCases].join(' '),
   };

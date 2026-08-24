@@ -159,8 +159,8 @@ test('a follow-up is resolved before anything else sees it', async () => {
   assert.equal(exchange.question, 'What happens to a gift card balance when the account closes?');
   assert.deepEqual(asked, ['What happens to a gift card balance when the account closes?']);
   // The entry is stored under the question that stands alone, not the fragment.
-  assert.equal(knowledgeBase.find('What happens to a gift card balance when the account closes?')?.question,
-    'What happens to a gift card balance when the account closes?');
+  assert.deepEqual(knowledgeBase.find('What happens to a gift card balance when the account closes?')?.questions,
+    ['What happens to a gift card balance when the account closes?']);
   rmSync(directory, { recursive: true, force: true });
 });
 
