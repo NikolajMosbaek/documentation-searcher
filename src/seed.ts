@@ -5,16 +5,23 @@ import {
   createClaudeEngine,
   createClaudeJudge,
   createClaudeProposer,
+  assertEntriesStayWithTheirCode,
   createKnowledgeBase,
   estimateCostUsd,
+  ensureKnowledgeBase,
   formatSeedPlan,
+  knowledgeBaseFor,
   parseSeedPlan,
 } from './core/index.js';
 
 const PLAN_FILE = process.env.DOCSEARCHER_SEED_PLAN ?? 'seed-plan.md';
-const KNOWLEDGE_BASE =
-  process.env.DOCSEARCHER_KNOWLEDGE_BASE ?? join(import.meta.dirname, '..', 'knowledge-base');
 const CODEBASE = process.env.DOCSEARCHER_CODEBASE;
+const BOT_ROOT = join(import.meta.dirname, '..');
+const KNOWLEDGE_BASE = knowledgeBaseFor({
+  configured: process.env.DOCSEARCHER_KNOWLEDGE_BASE,
+  codebase: CODEBASE,
+  botRoot: BOT_ROOT,
+});
 const MODEL = process.env.DOCSEARCHER_MODEL ?? 'claude-opus-5';
 const LIMIT = Number(process.env.DOCSEARCHER_SEED_AREAS) || 8;
 
@@ -22,6 +29,14 @@ if (!CODEBASE) {
   console.error('Set DOCSEARCHER_CODEBASE to the codebase this install answers about.');
   process.exit(2);
 }
+
+try {
+  assertEntriesStayWithTheirCode({ knowledgeBase: KNOWLEDGE_BASE, codebase: CODEBASE, botRoot: BOT_ROOT });
+} catch (error) {
+  console.error(error instanceof Error ? error.message : String(error));
+  process.exit(2);
+}
+ensureKnowledgeBase(KNOWLEDGE_BASE);
 
 // --dry-run reads the plan and reports, so it implies --write's half of the job
 // without the part that costs anything.

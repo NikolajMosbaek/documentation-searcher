@@ -108,7 +108,7 @@ The starting entries must not already answer the scenario's `question` — the r
 | Variable | Default | What it does |
 | --- | --- | --- |
 | `DOCSEARCHER_CODEBASE` | unset | The one codebase this install answers about. Unset means gaps are never filled. |
-| `DOCSEARCHER_KNOWLEDGE_BASE` | `./knowledge-base` | Where entries are read from and written to. |
+| `DOCSEARCHER_KNOWLEDGE_BASE` | `<codebase>/knowledge-base` | Where entries are read from and written to. Defaults to sitting inside the codebase being documented, not inside this repository. |
 | `DOCSEARCHER_MODEL` | `claude-opus-5` | The model behind the analysis engine. |
 | `DOCSEARCHER_MAX_USD` | `5` | Ceiling for working out a single answer. Below about `1.5`, real questions get cut off. |
 | `DOCSEARCHER_RESOLVER_MODEL` | falls back to `DOCSEARCHER_MODEL` | The model that rewrites follow-up questions. |
@@ -150,6 +150,10 @@ One or two sentences.
 - Conditions and exceptions
 ```
 
+**Entries live in the repository of the codebase they describe**, not in this one. That is what the PRD asks for — "so that I can correct an entry and have that correction reviewed alongside the change that caused it" — and it is also what stops one repository accumulating descriptions of another. Point the bot at a private codebase and its entries are written there, where they belong and where they are already protected.
+
+The bot refuses to do otherwise. If the knowledge base would end up inside *this* repository while the codebase being read is somewhere else, it exits before answering anything and says so. A test also checks that no entry committed here describes code outside here.
+
 The questions, `derived-from` and `fingerprint` are written by the bot; a hand-written entry leaves all three out. All three are metadata and are never shown to an asker.
 
 - **Questions** are every wording known to reach this entry, so asking one of them again is guaranteed to find it. Keywords cannot promise that — they are the model's words for the behaviour, and a question is the asker's words for the question. They live in a section rather than frontmatter because questions contain commas, which is how every frontmatter list here is separated. A single legacy `question:` field is still read.
@@ -178,6 +182,7 @@ src/core/knowledgeBase.ts  reads, writes, parses and merges entry files; owns th
 src/core/retrieval.ts      BM25 over the entries; in-memory, rebuilt whenever one is written
 src/core/sourceIndex.ts    content-hashes the files an answer came from, so staleness is detectable
 src/core/threadContext.ts  in-memory conversation memory
+src/core/whereEntriesGo.ts decides where entries are stored, and refuses to put them in the wrong repository
 
 src/core/engine.ts         the AnalysisEngine interface, the Derivation it returns, and the stub
 src/core/followUp.ts       whether a question leans on the conversation, and the resolver interface

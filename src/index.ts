@@ -5,8 +5,11 @@ import {
   createClaudeJudge,
   createClaudeResolver,
   createCore,
+  assertEntriesStayWithTheirCode,
   createKnowledgeBase,
   createSourceIndex,
+  ensureKnowledgeBase,
+  knowledgeBaseFor,
   formatAnswer,
   InMemoryThreadStore,
   noFollowUpResolver,
@@ -14,15 +17,29 @@ import {
   unavailableEngine,
 } from './core/index.js';
 
-const KNOWLEDGE_BASE =
-  process.env.DOCSEARCHER_KNOWLEDGE_BASE ?? join(import.meta.dirname, '..', 'knowledge-base');
-
 // One install serves exactly one codebase, per the PRD -- so this is a single
 // path read once at startup, not something an asker can choose per question.
 const CODEBASE = process.env.DOCSEARCHER_CODEBASE;
+const BOT_ROOT = join(import.meta.dirname, '..');
+
+// Entries live beside the code they describe, which is both what the PRD asks
+// for and what stops one repository accumulating descriptions of another.
+const KNOWLEDGE_BASE = knowledgeBaseFor({
+  configured: process.env.DOCSEARCHER_KNOWLEDGE_BASE,
+  codebase: CODEBASE,
+  botRoot: BOT_ROOT,
+});
+
+try {
+  assertEntriesStayWithTheirCode({ knowledgeBase: KNOWLEDGE_BASE, codebase: CODEBASE, botRoot: BOT_ROOT });
+} catch (error) {
+  console.error(error instanceof Error ? error.message : String(error));
+  process.exit(2);
+}
+ensureKnowledgeBase(KNOWLEDGE_BASE);
 
 const knowledgeBase = createKnowledgeBase(KNOWLEDGE_BASE);
-console.log(`[INFO] loaded ${knowledgeBase.size} knowledge-base entries`);
+console.log(`[INFO] loaded ${knowledgeBase.size} entries from ${KNOWLEDGE_BASE}`);
 
 const engine = CODEBASE
   ? createClaudeEngine({

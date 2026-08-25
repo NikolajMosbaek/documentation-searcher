@@ -33,6 +33,11 @@ export { createClaudeResolver } from './claudeResolver.js';
 export type { ClaudeResolverConfig } from './claudeResolver.js';
 export { createRetrievalIndex, tokenize } from './retrieval.js';
 export type { Match, RetrievalIndex } from './retrieval.js';
+export {
+  assertEntriesStayWithTheirCode,
+  ensureKnowledgeBase,
+  knowledgeBaseFor,
+} from './whereEntriesGo.js';
 export { createSourceIndex } from './sourceIndex.js';
 export type { SourceIndex } from './sourceIndex.js';
 export { unavailableEngine } from './engine.js';
