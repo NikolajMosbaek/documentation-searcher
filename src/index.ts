@@ -65,9 +65,21 @@ const core = createCore(knowledgeBase, engine, { sources, resolver, judge });
 const threads = new InMemoryThreadStore();
 
 // The Microsoft 365 Agents Playground sends unauthenticated requests, which the
-// SDK rejects by default. Never enable this outside local development.
-const isLocalDevelopment = process.env.NODE_ENV !== 'production';
-const app = new App({ dangerouslyAllowUnauthenticatedRequests: isLocalDevelopment });
+// SDK rejects by default.
+//
+// This used to be inferred from NODE_ENV not being 'production', which fails
+// open: anything deployed without that variable set accepted unauthenticated
+// requests on the endpoint that answers questions about a private codebase.
+// Iteration 1 flagged it and iteration 2 restated it, and it survived because
+// inferring it costs nobody anything until it costs everything. Turning on an
+// option named "dangerously" now requires saying so.
+const allowUnauthenticated = process.env.DOCSEARCHER_ALLOW_UNAUTHENTICATED === 'true';
+if (allowUnauthenticated) {
+  console.warn(
+    '[WARN] accepting unauthenticated requests because DOCSEARCHER_ALLOW_UNAUTHENTICATED is set. Local development only.',
+  );
+}
+const app = new App({ dangerouslyAllowUnauthenticatedRequests: allowUnauthenticated });
 
 // The entire Teams adapter. It resolves a thread id, hands the question to the
 // core, and sends back what the core rendered -- it decides nothing about the answer.

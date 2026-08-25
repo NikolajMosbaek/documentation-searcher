@@ -6,7 +6,7 @@ A Microsoft Teams bot, bound to a single codebase, that anyone in an organisatio
 
 Questions about how software behaves come from product owners, testers and support staff, and they all route through a developer who usually has to go and find out too. This answers them directly, in product language, with no file names or code in the reply. Every answer it works out is written back into a knowledge base that lives beside the code, so the second person to ask the same thing gets it instantly and for nothing.
 
-See [`PRD.md`](PRD.md) for why and what, [`CONSTITUTION.md`](CONSTITUTION.md) for the technical decisions that do not change, and [`docs/diary/`](docs/diary/) for how it was built, in order, including what went wrong.
+See [`PRD.md`](PRD.md) for why and what, [`CONSTITUTION.md`](CONSTITUTION.md) for the technical decisions that do not change, [`docs/diary/`](docs/diary/) for how it was built, in order, including what went wrong, and [`docs/review-backlog.md`](docs/review-backlog.md) for what is still open and what is waiting on a decision.
 
 ## How it answers
 
@@ -37,12 +37,13 @@ To try it without a Teams tenant, install Microsoft's Agents Playground once and
 
 ```sh
 npm install -g @microsoft/m365agentsplayground
-npm run playground   # opens http://localhost:56150
+DOCSEARCHER_ALLOW_UNAUTHENTICATED=true npm run dev   # in the terminal running the bot
+npm run playground                                   # opens http://localhost:56150
 ```
 
 Ask *"what happens when a user cancels a subscription mid-period?"* and you should get a structured answer from the seeded entries. Ask about anything else and, with a codebase configured, it will go and read it.
 
-The Playground sends unauthenticated requests, so the app enables `dangerouslyAllowUnauthenticatedRequests` whenever `NODE_ENV` is not `production`. No Teams tenant, tunnel, or Azure subscription is involved yet.
+The Playground sends unauthenticated requests, which the bot rejects unless `DOCSEARCHER_ALLOW_UNAUTHENTICATED=true` is set — and it says so loudly in the log when it is. It is off unless asked for, rather than on unless forbidden, because the endpoint answers questions about a private codebase. No Teams tenant, tunnel, or Azure subscription is involved yet.
 
 ### Avoiding a cold start
 
@@ -111,7 +112,7 @@ The starting entries must not already answer the scenario's `question` — the r
 | `DOCSEARCHER_SOAK_SCENARIO` | unset | A JSON file of questions for the soak. Unset uses the built-in ones, which are about this project. |
 | `DOCSEARCHER_SOAK_SEED` | unset | A directory of entries to start the soak's knowledge base from. Unset starts it empty. |
 | `PORT` | `3978` | The port the bot listens on. |
-| `NODE_ENV` | unset | Anything other than `production` accepts unauthenticated requests, for the Playground. Set it to `production` when deploying. |
+| `DOCSEARCHER_ALLOW_UNAUTHENTICATED` | unset | Set to `true` to accept unauthenticated requests, which the Playground sends. Local development only; it is off unless asked for. |
 
 `disputeCooldownMs` is set in code rather than by environment, and defaults to five minutes — how long an entry is left alone after being re-read because someone disputed it.
 
