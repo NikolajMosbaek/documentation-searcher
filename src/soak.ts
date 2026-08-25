@@ -116,6 +116,20 @@ console.log('This costs a few dollars and takes a few minutes.\n');
 const seeded = knowledgeBase.size;
 if (seeded > 0) console.log(`(${seeded} entries already stored)\n`);
 
+// The run assumes its first question is one the stored entries do not answer.
+// Seed a base that already covers it and every count afterwards is measuring
+// something else -- a merge instead of a new entry, a refresh instead of a
+// derivation -- and the failures that follow say nothing about the product.
+// Better to refuse than to report four confusing failures.
+const alreadyThere = knowledgeBase.find(scenario.question);
+if (alreadyThere) {
+  console.error(`\nThe seeded knowledge base already answers the scenario's question.`);
+  console.error(`  question: ${scenario.question}`);
+  console.error(`  answered by: ${alreadyThere.file}`);
+  console.error('The soak needs a question its starting entries do not cover; nothing was checked.');
+  process.exit(2);
+}
+
 // A question about this codebase, against entries about something else. If a
 // stored answer is served here, the bot is answering a question nobody asked.
 const cold = await turn(QUESTION);

@@ -92,7 +92,7 @@ An optional `alreadyCovered` is a question the starting entries answer, used onl
 DOCSEARCHER_CODEBASE=/path/to/a/codebase DOCSEARCHER_SOAK_SEED=./knowledge-base npm run soak
 ```
 
-Starting seeded is the more realistic case and the more revealing one. A base holding a few *unrelated* entries behaves differently from an empty one, and running against an empty one is what hid an over-matching bug until iteration 17.
+The starting entries must not already answer the scenario's `question` — the run refuses if they do, because every count after that would be measuring a merge or a refresh instead of a fresh answer. Starting seeded is the more realistic case and the more revealing one. A base holding a few *unrelated* entries behaves differently from an empty one, and running against an empty one is what hid an over-matching bug until iteration 17.
 
 `falseClaimMarker` is a phrase from `falseClaim` that must **not** appear once the bot has re-read the code. It is how the soak checks the most important thing it checks: that the bot does not agree with an objection the code does not support. A marker that does not appear in the claim is refused, because that check would then pass without testing anything.
 
