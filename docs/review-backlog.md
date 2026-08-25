@@ -34,6 +34,8 @@ The current shortlist rule is a fraction of the knowledge base rather than a fix
 
 Everything measured tonight was measured on thirty-one entries about two subjects — this bot, and a fictional subscription-billing service.
 
+The product itself has now been run against a third-party codebase (iteration 31) and answered it accurately, so the narrowness is in the *evaluation corpus* rather than in what the bot can read.
+
 ### The safety of a correction rests on a paragraph of English
 
 `asGuidance` is what stops the correction path becoming "anyone can rewrite the knowledge base by asserting things". Nothing enforces it structurally.
