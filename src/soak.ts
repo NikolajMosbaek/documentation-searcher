@@ -1,4 +1,4 @@
-import { appendFileSync, cpSync, existsSync, mkdirSync, mkdtempSync, readFileSync } from 'node:fs';
+import { appendFileSync, cpSync, existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import {
@@ -187,6 +187,15 @@ if (seeded > 0 && scenario.alreadyCovered) {
 }
 
 console.log(`\nsession spend: $${core.spentUsd().toFixed(4)} across ${knowledgeBase.size} entries`);
-console.log(`workspace kept for inspection: ${workspace}`);
-console.log(failures === 0 ? '\nSOAK PASSED' : `\n${failures} SOAK CHECK(S) FAILED`);
+
+// A passing run has nothing worth keeping, and these accumulate under the
+// system temp directory a few hundred megabytes at a time. A failing one is
+// exactly when somebody wants to look at what the bot wrote.
+if (failures === 0) {
+  rmSync(workspace, { recursive: true, force: true });
+  console.log('\nSOAK PASSED');
+} else {
+  console.log(`workspace kept for inspection: ${workspace}`);
+  console.log(`\n${failures} SOAK CHECK(S) FAILED`);
+}
 process.exit(failures === 0 ? 0 : 1);

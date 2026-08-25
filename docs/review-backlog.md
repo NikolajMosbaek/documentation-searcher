@@ -72,9 +72,6 @@ Only against the protocol. That needs a tenant, and it is the one thing here tha
 - **The dispute patterns are fourteen alternatives**, each added for a measured miss, each a chance for a false positive no test set covers.
 - **"we changed that last sprint" counts as a dispute.** A claim that the code moved, not that the answer is wrong. Defensible, and the loosest of them.
 - **The index rebuilds completely on every write.** Linear in the corpus.
-- **Soak workspaces accumulate** under the system temp directory.
-- **CI does not run on iteration branches**, and the pull-request half has never fired.
-- **GitHub Actions are pinned to `@v5`**, a moving tag, in a public repository.
 - **`spendByThread()` has no caller** outside tests.
 - **`--write` has no resume record.** Re-running is safe — it was resumed by accident in iteration 26 — but nothing says so.
 - **The drift test reads the README with regular expressions**, so restructuring headings can break it without anything being wrong.
@@ -134,3 +131,6 @@ Flagged, then fixed — usually by an iteration that did not know it was closing
 | it17 | The cold-start fix never went through the soak | it20 |
 | it19 | The judge moved onto the critical path untested | it20, measured it24 |
 | it26 | A fixed shortlist loses answers as the corpus grows | it28 |
+| it10 | Soak workspaces accumulate in the temp directory | it30 |
+| it11 | CI never checks an iteration branch before it lands | it30 |
+| it11 | Actions pinned to a moving tag in a public repository | it30 |

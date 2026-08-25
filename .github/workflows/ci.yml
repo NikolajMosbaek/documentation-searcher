@@ -1,8 +1,9 @@
 name: CI
 
 on:
+  # Every branch, not only main. An iteration branch used to land unchecked and
+  # be checked a second later on main, which is the wrong order to find out.
   push:
-    branches: [main]
   pull_request:
 
 jobs:
@@ -16,9 +17,13 @@ jobs:
         node: ['20.11', '22']
 
     steps:
-      - uses: actions/checkout@v5
+      # Pinned to a commit, not a tag. A tag is a pointer somebody else can
+      # move, which in a public repository is trust extended for convenience.
+      # These are v7.0.1 and v7.0.0 -- iteration 11 moved off v4 to clear a
+      # deprecation and landed on v5, which was already two majors behind.
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
 
-      - uses: actions/setup-node@v5
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
         with:
           node-version: ${{ matrix.node }}
           cache: npm
