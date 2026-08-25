@@ -154,6 +154,8 @@ Entries must be in product language. Loading warns if one reads like code — fi
 
 A malformed entry is skipped with a warning rather than taking the whole knowledge base down, which matters now that the bot writes entries itself. Two entries that say the same thing about the same code are merged into one carrying both questions, so the knowledge base does not degrade as it fills.
 
+"The same thing" is measured, not guessed: across every pair in the evaluation corpus, the two the engine genuinely produced twice for one question rank first and second, and the bar sits in the gap below them. "The same code" means the identical content hash — overlapping *file lists* was measured and is useless, because in a small codebase every answer reads most of the same files.
+
 ## Layout
 
 The core knows nothing about Teams; the adapter decides nothing about answers. That split is a constitutional requirement, not a preference.
@@ -193,6 +195,7 @@ Every `claude*.ts` sits behind an interface in the file above it, so no call sit
 
 ## Known limits
 
+- **Two entries derived either side of a code change never merge**, however alike they are, because the merge requires an identical content hash. Near-duplicates can therefore still accumulate over time. That is preferred to a looser rule, which measurement showed would merge behaviours that are merely neighbours.
 - **It has never run inside Teams.** Only against the protocol. That needs a tenant.
 - **Retrieval is only trusted to shortlist.** Measured against twelve real entries this bot wrote, deciding on word-counting alone served a wrong entry for three of ten rephrasings and answered two of seven entirely unrelated questions — and no absolute threshold fixed it, because a score grows with the corpus and with the rarity of the words involved. The bars are now high enough that most questions are shortlisted rather than answered outright, which costs a few seconds and a few cents on questions that used to be instant and free. That is the price of not serving confident wrong answers, and it is worth paying.
 - **Retrieval is lexical.** A second opinion covers the band where it ranks something without being sure, but a question sharing *no* vocabulary with the entry that answers it never ranks at all, so there is nothing to weigh. Closing that means embeddings, which mean storage — deferred until a fake genuinely cannot cut it.

@@ -220,18 +220,34 @@ export function findEntry(entries: Entry[], question: string): Entry | undefined
  * describes many behaviours -- and similar wording alone is not enough either.
  */
 export function isDuplicate(entry: Entry, derivation: Derivation): boolean {
+  // Identical fingerprints mean both were derived against the same bytes, which
+  // in practice means the same session. Overlapping *files* was considered as a
+  // looser test and measured useless: in a small codebase every answer reads
+  // most of the same files, so genuinely different behaviours overlap by 0.83
+  // to 0.86, against 0.89 to 1.00 for real duplicates.
+  //
+  // The cost is that two entries derived either side of a code change never
+  // merge, however alike they are. That is a known way for near-duplicates to
+  // accumulate over time, and it is preferred to a rule that merges behaviours
+  // which are merely neighbours.
   if (!entry.fingerprint || entry.fingerprint !== derivation.fingerprint) return false;
   return similarity(entry.answer.shortAnswer, derivation.answer.shortAnswer) >= DUPLICATE_SIMILARITY;
 }
 
 /**
- * Measured rather than guessed. The same behaviour re-derived with slightly
- * different wording scores about 0.64; two different behaviours drawn from the
- * same file score about 0.14. The margin above this line is thin, which is the
- * right way round -- failing to merge leaves a duplicate, which is merely the
- * situation before any of this, while merging wrongly loses a behaviour.
+ * Measured against real duplicates rather than imagined ones.
+ *
+ * Iteration 12 set this to 0.6 from two sentences written to *resemble* a
+ * re-derivation, which scored 0.636. Real re-derivations of the same question,
+ * produced by this engine on separate runs, score 0.400 and 0.500 -- so the
+ * bar sat above every genuine duplicate this project has ever produced, and
+ * the merge could not fire.
+ *
+ * Across all 66 pairs in the evaluation corpus those two duplicates rank first
+ * and second. The highest-scoring pair that is *not* the same behaviour scores
+ * 0.310, and the mean of the rest is 0.082. 0.35 sits in that gap.
  */
-const DUPLICATE_SIMILARITY = 0.6;
+export const DUPLICATE_SIMILARITY = 0.35;
 
 /** Share of the words the two have in common, ignoring order and repetition. */
 export function similarity(a: string, b: string): number {

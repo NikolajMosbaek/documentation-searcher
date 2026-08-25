@@ -42,9 +42,11 @@ An asker's exact words are stored in the entry they produce and printed in every
 
 `looksDependent` decides whether a question leans on the conversation; `looksLikeCorrection` decides whether a message disputes the last answer. Both are regexes standing in for understanding, deliberately biased in opposite directions, and neither has its accuracy measured. Their false negatives are invisible: the question is simply treated as something else.
 
-### Merging is automatic and irreversible
+### Merging is automatic, irreversible, and only fires within one code state
 
-When two derivations say the same thing about the same code, the newer one wins and the older wording is discarded; only its question survives. `DUPLICATE_SIMILARITY` was calibrated on four hand-written pairs with about 0.04 of margin on the case that matters, and no *real* pair of derivations has ever been merged.
+When two derivations say the same thing about the same code, the newer one wins and the older wording is discarded; only its question survives.
+
+The similarity bar was re-measured in iteration 22 against the two pairs this engine genuinely produced twice, and moved from 0.6 to 0.35 — the old value sat above every real duplicate, so the merge could not fire at all. What remains open is the other half of the rule: it requires an identical content hash, so two entries derived either side of any code change never merge however alike they are. Near-duplicates can still accumulate over time. A looser rule based on overlapping file lists was measured and rejected.
 
 ### It has never run inside Teams
 

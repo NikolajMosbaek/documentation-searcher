@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import { join } from 'node:path';
 import { test } from 'node:test';
-import { loadKnowledgeBase } from './knowledgeBase.js';
+import { DUPLICATE_SIMILARITY, loadKnowledgeBase, similarity } from './knowledgeBase.js';
 import { createRetrievalIndex } from './retrieval.js';
 
 /**
@@ -91,4 +91,51 @@ test('a question sharing no words with anything is not even shortlisted', () => 
   // No judge call is worth paying for here; there is nothing to weigh.
   assert.deepEqual(index.candidates('what colour is the office carpet?'), []);
   assert.deepEqual(index.candidates('who is the chief executive?'), []);
+});
+
+/**
+ * The merge threshold, measured against the two pairs in this corpus that the
+ * engine genuinely produced for the same question on separate runs.
+ */
+test('real duplicates score above the merge bar, and nothing else does', () => {
+  const DUPLICATES = [NO_ANSWER, STALE];
+  const byFile = (file: string) => entries.find((e) => e.file === file)!;
+
+  const duplicateScores = DUPLICATES.map(([a, b]) =>
+    similarity(byFile(a!).answer.shortAnswer, byFile(b!).answer.shortAnswer),
+  );
+
+  const isDuplicatePair = (a: string, b: string) =>
+    DUPLICATES.some((pair) => pair.includes(a) && pair.includes(b));
+
+  const others: number[] = [];
+  for (let i = 0; i < entries.length; i += 1) {
+    for (let j = i + 1; j < entries.length; j += 1) {
+      const a = entries[i]!, b = entries[j]!;
+      if (isDuplicatePair(a.file, b.file)) continue;
+      others.push(similarity(a.answer.shortAnswer, b.answer.shortAnswer));
+    }
+  }
+
+  const lowestDuplicate = Math.min(...duplicateScores);
+  const highestOther = Math.max(...others);
+
+  // Iteration 12's bar of 0.6 sat above both of these, so the merge it added
+  // could never have fired on anything this engine actually produced.
+  assert.ok(lowestDuplicate < 0.6, `a real duplicate scored ${lowestDuplicate.toFixed(3)}`);
+
+  // The property the bar depends on: real duplicates and everything else are
+  // separable at all.
+  assert.ok(
+    lowestDuplicate > highestOther,
+    `duplicates bottom out at ${lowestDuplicate.toFixed(3)} but something else reached ${highestOther.toFixed(3)}`,
+  );
+
+  // And the bar actually in use sits inside that gap. Asserting the measured
+  // values alone would let the constant be changed to anything without notice.
+  assert.ok(
+    highestOther < DUPLICATE_SIMILARITY && DUPLICATE_SIMILARITY <= lowestDuplicate,
+    `the bar is ${DUPLICATE_SIMILARITY}, outside the measured gap ` +
+      `${highestOther.toFixed(3)}..${lowestDuplicate.toFixed(3)}`,
+  );
 });
