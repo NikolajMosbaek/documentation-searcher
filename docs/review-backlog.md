@@ -24,14 +24,16 @@ It was verified once, live, against one deliberately false objection, and it hel
 
 *Suggested:* compare a re-derived answer against the one it replaces and flag a reversal for human review, so a capitulation is visible rather than silent.
 
-### Everything measured so far was measured on twenty-four entries about two subjects
+### Everything measured so far was measured on thirty-one entries about two subjects
 
 The corpus was doubled in iteration 26 and everything re-measured. Two results changed:
 
 - **Retrieval's three thresholds were deleted.** They served nothing wrong at twelve entries and two wrong answers at twenty-four. Retrieval now only shortlists.
 - **The merge bar can no longer separate duplicates from neighbours.** It is set for safety and catches only obvious cases.
 
-Both are the same lesson: a number measured on a small corpus does not survive a larger one. The corpus is still about this bot and subscription billing, and the next doubling may move these again.
+Growing it again to thirty-one in iteration 28 moved one more: the shortlist size, which was fixed at ten and about to lose an answer. It now scales with the knowledge base.
+
+The lesson is consistent across all three: a number measured on a small corpus does not survive a larger one, and the remaining risk is always the most recently fixed number. Here that is the cap of twenty on the shortlist. The corpus is still about this bot and subscription billing.
 
 
 

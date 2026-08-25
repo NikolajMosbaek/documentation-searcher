@@ -33,14 +33,8 @@ export interface RetrievalIndex {
   /**
    * Entries worth considering, best first. Not answers -- candidates.
    *
-   * The default limit is measured, not chosen. On a corpus of twenty-four the
-   * right entry for one question ranks ninth, so a shortlist of five loses it
-   * and the judge never sees it -- and a judge can only choose from what it is
-   * shown. Ten recovers every question tried, and costs nothing in noise: the
-   * same three unrelated questions are shortlisted at five as at fifteen.
-   *
-   * This is the number most likely to be wrong on a larger knowledge base, and
-   * `npm run judge-eval` plus the evaluation tests are how to find out.
+   * The default limit scales with the knowledge base rather than being fixed;
+   * see `shortlistSize`.
    */
   candidates(question: string, limit?: number): Match[];
   /** Exposed so the ranking can be inspected and tested. */
@@ -68,8 +62,28 @@ export interface Match {
  */
 const TOO_SMALL_TO_JUDGE_LEXICALLY = 5;
 
-/** How many candidates a judge is shown. Measured -- see `candidates`. */
-const SHORTLIST_SIZE = 10;
+/**
+ * How many candidates a judge is shown, as a share of the knowledge base.
+ *
+ * A fixed number does not survive growth. The hardest question in the labelled
+ * set ranked its answer ninth on twenty-four entries and tenth on thirty-one --
+ * a fixed ten was about to lose it, and a judge cannot choose what it is not
+ * shown. Erring large is nearly free: the number of *unrelated* questions that
+ * get shortlisted is identical at five, ten, fifteen and twenty, so a longer
+ * list costs judge prompt tokens and nothing else.
+ *
+ * The cap is the part most likely to fail. On a knowledge base large enough for
+ * twenty to be too few, the answer to a badly-phrased question will fall off
+ * the end and be derived again instead of found -- expensive rather than wrong,
+ * which is the right way round, and `npm run judge-eval` is how to notice.
+ */
+const SHORTLIST_FRACTION = 0.5;
+const SHORTLIST_MINIMUM = 10;
+const SHORTLIST_MAXIMUM = 20;
+
+function shortlistSize(corpus: number): number {
+  return Math.min(SHORTLIST_MAXIMUM, Math.max(SHORTLIST_MINIMUM, Math.ceil(corpus * SHORTLIST_FRACTION)));
+}
 
 const K1 = 1.2;
 const B = 0.75;
@@ -155,7 +169,7 @@ export function createRetrievalIndex(entries: Entry[]): RetrievalIndex {
 
   return {
     rank,
-    candidates(question: string, limit = SHORTLIST_SIZE): Match[] {
+    candidates(question: string, limit = shortlistSize(documents.length)): Match[] {
       const ranked = rank(question);
       if (ranked.length > 0) return ranked.slice(0, limit);
 
