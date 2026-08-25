@@ -185,8 +185,9 @@ test('similarity ignores word order and repetition', () => {
 });
 
 test('the merge threshold separates a re-wording from a different behaviour', () => {
-  // The realistic merge case: the same behaviour derived twice, worded slightly
-  // differently. Measured at about 0.64, so it clears the bar -- but not by much.
+  // A re-wording of the same behaviour, at about 0.64. Real re-derivations
+  // measured later score lower than this -- 0.18 to 0.89 -- so treat this as a
+  // constructed example rather than a typical one.
   const rewording = similarity(
     'Access continues until the end of the period already paid for, and no refund is issued.',
     'Access continues to the end of the period the customer already paid for; no refund is given.',

@@ -50,7 +50,13 @@ export interface RetrievalIndex {
 export interface Match {
   entry: Entry;
   score: number;
-  /** Share of the question's content words that appear in the entry at all. */
+  /**
+   * Share of the question's content words that appear in the entry at all.
+   *
+   * Diagnostic only. It was half of a threshold until iteration 26 removed the
+   * thresholds; nothing decides on it now, and it is kept because reading it
+   * beside the score is how the ranking gets understood when it goes wrong.
+   */
   coverage: number;
 }
 

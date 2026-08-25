@@ -18,7 +18,7 @@ Every question goes to the knowledge base first.
 4. **A question nothing covers** sends the bot to read the codebase, write what it learns back as a new entry, and answer from that. If the code genuinely does not cover the question, it says so and does not guess.
 5. **Saying an answer is wrong** in the thread makes the bot read the code again. The objection is a hint about where to look, never evidence — if the code supports the original answer, it says so rather than agreeing with you.
 
-Costs, measured: about **$0.60–$1.15 and a minute** the first time a question is answered, then about **a millisecond and nothing** for everyone after. That ratio is the whole product. Every read of the codebase is logged with what it cost and which conversation caused it:
+Costs, measured end to end: a question nobody has asked takes about **80 seconds and $0.60–$1.15**. Asked again in the same words it comes back in **no measurable time, for nothing**. Asked in different words it takes about **4 seconds and a fraction of a cent**, because something has to decide whether the stored answer really answers it. That ratio is the whole product. Every read of the codebase is logged with what it cost and which conversation caused it:
 
 ```
 [SPEND] $0.7176 miss     thread=19:a1b2c3 (thread $0.7176, session $2.2489) What happens when a trial ends?
