@@ -1,6 +1,6 @@
 import { query } from '@anthropic-ai/claude-agent-sdk';
 import { findCodeReferences, type Answer } from './answer.js';
-import type { AnalysisEngine, Derivation } from './engine.js';
+import type { AnalysisEngine, Attempt, Derivation } from './engine.js';
 import { createSourceIndex, type SourceIndex } from './sourceIndex.js';
 
 export interface ClaudeEngineConfig {
@@ -86,7 +86,7 @@ export function createClaudeEngine(config: ClaudeEngineConfig): AnalysisEngine {
   const sources = createSourceIndex(config.codebase);
 
   return {
-    async deriveAnswer(question: string, guidance?: string): Promise<Derivation | null> {
+    async deriveAnswer(question: string, guidance?: string): Promise<Attempt> {
       let structured: unknown;
       let costUsd = 0;
 
@@ -120,7 +120,7 @@ export function createClaudeEngine(config: ClaudeEngineConfig): AnalysisEngine {
 
           if (message.subtype !== 'success') {
             console.warn(`[WARN] analysis did not complete (${message.subtype})`);
-            return null;
+            return { derivation: null, costUsd };
           }
           structured = message.structured_output;
           costUsd = message.total_cost_usd;
@@ -129,12 +129,11 @@ export function createClaudeEngine(config: ClaudeEngineConfig): AnalysisEngine {
         // An unreachable or unauthenticated engine is a miss, not an outage:
         // the asker gets an honest "I don't know" instead of a stack trace.
         console.warn(`[WARN] analysis engine unavailable: ${describeError(error)}`);
-        return null;
+        return { derivation: null, costUsd };
       }
 
       const derivation = toDerivation(structured, sources, question);
-      if (!derivation) return null;
-      derivation.costUsd = costUsd;
+      if (!derivation) return { derivation: null, costUsd };
 
       // A stored entry is served to every future asker, so a leak here is worse
       // than a miss. Discard rather than persist an answer that breaks the rules.
@@ -143,10 +142,10 @@ export function createClaudeEngine(config: ClaudeEngineConfig): AnalysisEngine {
         for (const line of leaked) {
           console.warn(`[WARN] discarded a derived answer that reads like code: "${line}"`);
         }
-        return null;
+        return { derivation: null, costUsd };
       }
 
-      return derivation;
+      return { derivation, costUsd };
     },
   };
 }

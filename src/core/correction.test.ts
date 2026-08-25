@@ -75,3 +75,25 @@ test('questions that merely mention being wrong are not disputes', () => {
     assert.equal(looksLikeCorrection(message), false, message);
   }
 });
+
+test('an assertion about what the code really does is a dispute; asking is not', () => {
+  // Found by testing the correction path against objections of varying
+  // plausibility: an objection framed as authorship went unrecognised, so the
+  // entry was never re-checked and the message was answered as a new question.
+  for (const message of [
+    'I wrote that part of the system. It actually runs shell commands as well as reading.',
+    'that actually does the opposite',
+    'no, it actually reads the whole file',
+  ]) {
+    assert.equal(looksLikeCorrection(message), true, message);
+  }
+
+  // "actually" before an auxiliary is a question, not a correction.
+  for (const message of [
+    'does it actually re-check its answers on a schedule?',
+    'what does it actually look like when it does not know?',
+    'how does it actually decide which entry to use?',
+  ]) {
+    assert.equal(looksLikeCorrection(message), false, message);
+  }
+});

@@ -13,6 +13,10 @@ const DISPUTE = new RegExp(
     String.raw`\b(isn|doesn|wasn|don)['’]?t (right|correct|match|sound right|think so|what happens)\b`,
     String.raw`\bno,? +that\b`,
     String.raw`\bactually,? +(it|that|the)\b`,
+    // The other word order, which is an assertion rather than a question:
+    // "it actually runs shell commands" corrects, "does it actually re-check?"
+    // asks. Requiring a main verb rather than an auxiliary separates them.
+    String.raw`\b(it|that|this) actually (runs|does|is|has|uses|works|reads|writes|behaves)\b`,
     String.raw`\b(wrong answer|no longer true|not what happens)\b`,
     String.raw`\bthat['’]?s not how\b`,
     // Measured additions: ten of eighteen real-sounding disputes fell through

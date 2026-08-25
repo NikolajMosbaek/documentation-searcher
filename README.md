@@ -22,6 +22,7 @@ Costs, measured: about **$0.60–$1.15 and a minute** the first time a question 
 
 ```
 [SPEND] $0.7176 miss     thread=19:a1b2c3 (thread $0.7176, session $2.2489) What happens when a trial ends?
+[SPEND] $0.6100 miss     (no answer) thread=19:a1b2c3 (thread $1.3276, session $2.8589) What colour is the carpet?
 ```
 
 ## Running it
@@ -206,6 +207,8 @@ Every `claude*.ts` sits behind an interface in the file above it, so no call sit
 - **Retrieval is lexical.** A second opinion covers the band where it ranks something without being sure, but a question sharing *no* vocabulary with the entry that answers it never ranks at all, so there is nothing to weigh. Closing that means embeddings, which mean storage — deferred until a fake genuinely cannot cut it.
 - **Follow-ups and near misses cost a few seconds.** Four to six, and four to five, which is most of what an asker waits for when the answer is already stored. Measured rather than guessed: a call doing the least possible work — no tools, one turn, one word out — still takes about 3.2 seconds and costs $0.0017, and a *smaller* model is slower. It is fixed overhead per call to the agent harness, not inference. A plain Messages API call would suit a text rewrite far better but needs its own credential, where the harness runs on whatever Claude Code is already authenticated with; that trade has been declined deliberately.
 - **Reading a large codebase costs more.** Both cost measurements are against this project's own source, which is small and heavily commented. `DOCSEARCHER_MAX_USD` is the only bound.
+Reading the codebase and finding nothing costs the same as finding something, so it is counted the same and marked `(no answer)`.
+
 - **Spend goes to stdout, and questions go with it.** Every read of the codebase logs its cost, its reason and the conversation that caused it, with a running total per thread and for the session — but it is a log line, not an audit trail, and it includes the question as asked. In a real deployment those questions are written by people, so treat the logs accordingly.
 
 ## Not built yet

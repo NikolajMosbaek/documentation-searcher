@@ -4,7 +4,7 @@ import type { SourceIndex } from './sourceIndex.js';
 import { looksDependent, noFollowUpResolver, type FollowUpResolver } from './followUp.js';
 import { noJudge, type CandidateJudge } from './judge.js';
 import { asGuidance, looksLikeCorrection } from './correction.js';
-import type { AnalysisEngine, Derivation } from './engine.js';
+import type { AnalysisEngine, Attempt } from './engine.js';
 import type { ThreadContext, Turn } from './threadContext.js';
 
 export { formatAnswer, findCodeReferences } from './answer.js';
@@ -36,7 +36,7 @@ export type { Match, RetrievalIndex } from './retrieval.js';
 export { createSourceIndex } from './sourceIndex.js';
 export type { SourceIndex } from './sourceIndex.js';
 export { unavailableEngine } from './engine.js';
-export type { AnalysisEngine, Derivation } from './engine.js';
+export type { AnalysisEngine, Attempt, Derivation } from './engine.js';
 export { createClaudeEngine } from './claudeEngine.js';
 export type { ClaudeEngineConfig } from './claudeEngine.js';
 export { InMemoryThreadStore } from './threadContext.js';
@@ -125,11 +125,14 @@ export function createCore(
    */
   function recordSpend(
     reason: SpendReason,
-    derivation: Derivation,
+    attempt: Attempt,
     question: string,
     threadId: string,
   ): void {
-    const cost = derivation.costUsd ?? 0;
+    // Recorded whether or not the attempt produced an answer. A read of the
+    // codebase that finds nothing costs the same as one that finds something,
+    // and counting only the successes reported every honest miss as free.
+    const cost = attempt.costUsd;
     spentUsd += cost;
 
     const thread = perThread.get(threadId) ?? { threadId, costUsd: 0, reads: 0 };
@@ -138,8 +141,8 @@ export function createCore(
     perThread.set(threadId, thread);
 
     console.log(
-      `[SPEND] $${cost.toFixed(4)} ${reason.padEnd(8)} thread=${threadId} ` +
-        `(thread $${thread.costUsd.toFixed(4)}, session $${spentUsd.toFixed(4)}) ${question}`,
+      `[SPEND] $${cost.toFixed(4)} ${reason.padEnd(8)}${attempt.derivation ? '' : ' (no answer)'} ` +
+        `thread=${threadId} (thread $${thread.costUsd.toFixed(4)}, session $${spentUsd.toFixed(4)}) ${question}`,
     );
   }
 
@@ -179,9 +182,11 @@ export function createCore(
 
         // Verify on read: the code moved, so the stored answer is not trusted
         // until it has been derived again from what the code says now.
-        const refreshed = await engine.deriveAnswer(question);
+        const attempt = await engine.deriveAnswer(question);
+        recordSpend('refresh', attempt, question, thread.threadId);
+
+        const refreshed = attempt.derivation;
         if (refreshed) {
-          recordSpend('refresh', refreshed, question, thread.threadId);
           try {
             knowledgeBase.replace(known, refreshed);
           } catch (error) {
@@ -197,12 +202,14 @@ export function createCore(
         return { answer: { ...known.answer, source: 'stale' }, question, entryFile: known.file };
       }
 
-      const derived = await engine.deriveAnswer(question);
+      const attempt = await engine.deriveAnswer(question);
+      recordSpend('miss', attempt, question, thread.threadId);
+
+      const derived = attempt.derivation;
       if (!derived) return { answer: missAnswer(), question };
 
       // Lazy population on miss: storing it is what makes the second asker free.
       // A failure to store is not a failure to answer, so it does not propagate.
-      recordSpend('miss', derived, question, thread.threadId);
 
       let stored: string | undefined;
       try {
@@ -258,12 +265,13 @@ export function createCore(
       lastDisputed.set(existing.file, Date.now());
     }
 
-    const rederived = await engine.deriveAnswer(question, asGuidance(objection));
+    const attempt = await engine.deriveAnswer(question, asGuidance(objection));
+    recordSpend('dispute', attempt, question, threadId);
+
+    const rederived = attempt.derivation;
     if (!rederived) {
       return { answer: recheckFailedAnswer(), question, entryFile: previous.entryFile };
     }
-
-    recordSpend('dispute', rederived, question, threadId);
 
     let entryFile = previous.entryFile;
     try {

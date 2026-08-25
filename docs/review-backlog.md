@@ -14,6 +14,10 @@ Ordered by how much damage the item can do, not by how hard it is.
 
 ### The safety of a correction rests on a paragraph of English
 
+Measured in iteration 25 against four objections of escalating plausibility — flatly false, plausible and specific, claiming authorship, and a true detail with a false one attached. In all three cases where the correction path actually ran, the bot re-read the code and contradicted the objector. The fourth was not recognised as a dispute at all, which is now fixed.
+
+Still only four objections, one entry, one model, and the property is still a paragraph of English with nothing enforcing it.
+
 `asGuidance` in `/src/core/correction.ts` is what stops anyone in a chat thread rewriting the knowledge base by asserting things. It works by telling the engine that an objection is a hint and not evidence, and that it should contradict the objector when the code does. Nothing enforces that structurally. An engine that ignored the instruction would write the objector's claim into a file.
 
 It was verified once, live, against one deliberately false objection, and it held. That is evidence, not a guarantee.

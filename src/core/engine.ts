@@ -32,17 +32,27 @@ export interface Derivation {
    * on every read to decide whether the answer still describes the code.
    */
   fingerprint: string;
-  /**
-   * What deriving this actually cost, as the engine reports it. Optional
-   * because a stub engine spends nothing and should not have to pretend.
-   */
-  costUsd?: number;
 }
 
 /**
  * The codebase-analysis engine. The constitution fixes the Claude Agent SDK as
  * the implementation, but nothing here knows that -- so no call site does either.
  */
+/**
+ * One attempt at reading the codebase, and what it cost.
+ *
+ * The cost is separate from the derivation because an attempt that finds no
+ * answer still reads the codebase and still costs money. Reporting it only
+ * alongside a successful derivation meant every honest miss -- a designed and
+ * common outcome -- was spent silently and counted as nothing.
+ */
+export interface Attempt {
+  /** What was derived, or null when the codebase does not answer the question. */
+  derivation: Derivation | null;
+  /** What this attempt cost, whether or not it produced an answer. */
+  costUsd: number;
+}
+
 export interface AnalysisEngine {
   /**
    * Derive an answer from the codebase, or null if it cannot.
@@ -51,7 +61,7 @@ export interface AnalysisEngine {
    * disputed answer. It is never content to be repeated back: the codebase
    * remains the only thing an answer may be derived from.
    */
-  deriveAnswer(question: string, guidance?: string): Promise<Derivation | null>;
+  deriveAnswer(question: string, guidance?: string): Promise<Attempt>;
 }
 
 /**
@@ -59,7 +69,7 @@ export interface AnalysisEngine {
  * product degrade to "honest about not knowing" rather than to broken.
  */
 export const unavailableEngine: AnalysisEngine = {
-  async deriveAnswer(): Promise<Derivation | null> {
-    return null;
+  async deriveAnswer(): Promise<Attempt> {
+    return { derivation: null, costUsd: 0 };
   },
 };

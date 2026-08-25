@@ -88,6 +88,7 @@ async function writeChosen(): Promise<void> {
 
   const engine = createClaudeEngine({ codebase: CODEBASE!, model: MODEL, maxBudgetUsd: 5 });
   let written = 0;
+  let spent = 0;
 
   for (const [index, question] of questions.entries()) {
     const position = `[${index + 1}/${questions.length}]`;
@@ -99,16 +100,20 @@ async function writeChosen(): Promise<void> {
       continue;
     }
 
-    const derived = await engine.deriveAnswer(question);
-    if (!derived) {
-      console.log(`${position} no answer in the code: ${question}`);
+    const attempt = await engine.deriveAnswer(question);
+    // Counted whether or not it produced an answer: reading the codebase and
+    // finding nothing costs the same as reading it and finding something.
+    spent += attempt.costUsd;
+
+    if (!attempt.derivation) {
+      console.log(`${position} no answer in the code ($${attempt.costUsd.toFixed(2)}): ${question}`);
       continue;
     }
 
-    const entry = knowledgeBase.add({ ...derived, question });
+    const entry = knowledgeBase.add({ ...attempt.derivation, question });
     written += 1;
-    console.log(`${position} ${entry.file}`);
+    console.log(`${position} ${entry.file} ($${attempt.costUsd.toFixed(2)})`);
   }
 
-  console.log(`\nWrote ${written} of ${questions.length}. Review the diff before committing.`);
+  console.log(`\nWrote ${written} of ${questions.length} for $${spent.toFixed(2)}. Review the diff before committing.`);
 }

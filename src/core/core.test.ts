@@ -13,6 +13,9 @@ import type { SourceIndex } from './sourceIndex.js';
 
 const QUESTION = 'how do gift cards work?';
 
+/** What every fake attempt in these tests claims to have cost. */
+const FAKE_COST = 1.25;
+
 function derivation(shortAnswer: string, fingerprint: string): Derivation {
   return {
     question: QUESTION,
@@ -20,7 +23,6 @@ function derivation(shortAnswer: string, fingerprint: string): Derivation {
     keywords: ['gift card', 'voucher'],
     derivedFrom: ['billing.ts'],
     fingerprint,
-    costUsd: 1.25,
     answer: { shortAnswer, behaviour: [], edgeCases: [], source: 'engine' },
   };
 }
@@ -32,7 +34,12 @@ function movableSources(): SourceIndex & { current: string } {
 
 function counting(answers: () => Derivation | null) {
   let calls = 0;
-  const engine: AnalysisEngine = { async deriveAnswer() { calls += 1; return answers(); } };
+  const engine: AnalysisEngine = {
+    async deriveAnswer() {
+      calls += 1;
+      return { derivation: answers(), costUsd: FAKE_COST };
+    },
+  };
   return { engine, calls: () => calls };
 }
 
@@ -104,7 +111,7 @@ test('an entry that cannot be refreshed is still answered, but never silently', 
   knowledgeBase.add(stored);
 
   sources.current = 'bbbb';
-  const core = createCore(knowledgeBase, { async deriveAnswer() { return null; } }, { sources });
+  const core = createCore(knowledgeBase, { async deriveAnswer() { return { derivation: null, costUsd: 0 }; } }, { sources });
   const { answer: answer } = await core.ask(QUESTION, THREAD);
 
   assert.equal(answer.source, 'stale');
@@ -170,7 +177,7 @@ test('the first question in a thread is never rewritten', async () => {
   const resolver: FollowUpResolver = {
     async resolve(question) { resolverCalls += 1; return question; },
   };
-  const core = createCore(knowledgeBase, { async deriveAnswer() { return null; } }, { sources: movableSources(), resolver });
+  const core = createCore(knowledgeBase, { async deriveAnswer() { return { derivation: null, costUsd: 0 }; } }, { sources: movableSources(), resolver });
 
   // Reads as dependent, but there is nothing to depend on.
   const exchange = await core.ask('and what about them?', { threadId: 't', turns: [] });
@@ -185,7 +192,7 @@ test('a self-contained question mid-thread is not sent for rewriting', async () 
   const resolver: FollowUpResolver = {
     async resolve(question) { resolverCalls += 1; return question; },
   };
-  const core = createCore(knowledgeBase, { async deriveAnswer() { return null; } }, { sources: movableSources(), resolver });
+  const core = createCore(knowledgeBase, { async deriveAnswer() { return { derivation: null, costUsd: 0 }; } }, { sources: movableSources(), resolver });
   const thread = { threadId: 't', turns: [{ question: 'first', resolved: 'first', answeredFrom: 'engine' as const }] };
 
   await core.ask('What happens when a customer redeems a voucher at checkout?', thread);
@@ -196,7 +203,7 @@ test('a self-contained question mid-thread is not sent for rewriting', async () 
 test('a resolver that fails leaves the question exactly as asked', async () => {
   const { directory, knowledgeBase } = base();
   const failing: FollowUpResolver = { async resolve(question) { return question; } };
-  const core = createCore(knowledgeBase, { async deriveAnswer() { return null; } }, { sources: movableSources(), resolver: failing });
+  const core = createCore(knowledgeBase, { async deriveAnswer() { return { derivation: null, costUsd: 0 }; } }, { sources: movableSources(), resolver: failing });
   const thread = { threadId: 't', turns: [{ question: 'first', resolved: 'first', answeredFrom: 'engine' as const }] };
 
   const exchange = await core.ask('and them?', thread);
@@ -207,7 +214,7 @@ test('a resolver that fails leaves the question exactly as asked', async () => {
 
 test('with no resolver configured, nothing is rewritten', async () => {
   const { directory, knowledgeBase } = base();
-  const core = createCore(knowledgeBase, { async deriveAnswer() { return null; } }, { sources: movableSources(), resolver: noFollowUpResolver });
+  const core = createCore(knowledgeBase, { async deriveAnswer() { return { derivation: null, costUsd: 0 }; } }, { sources: movableSources(), resolver: noFollowUpResolver });
   const thread = { threadId: 't', turns: [{ question: 'first', resolved: 'first', answeredFrom: 'engine' as const }] };
 
   const exchange = await core.ask('and them?', thread);
@@ -221,7 +228,10 @@ test('flagging an answer as wrong re-reads the code and replaces the entry', asy
   const seen: Array<string | undefined> = [];
   let text = 'Credit is added to the balance.';
   const engine: AnalysisEngine = {
-    async deriveAnswer(_q, guidance) { seen.push(guidance); return derivation(text, sources.current); },
+    async deriveAnswer(_q, guidance) {
+      seen.push(guidance);
+      return { derivation: derivation(text, sources.current), costUsd: FAKE_COST };
+    },
   };
   const core = createCore(knowledgeBase, engine, { sources });
 
@@ -256,7 +266,7 @@ test('a dispute the code does not support leaves the answer standing', async () 
   const original = 'Credit is added to the balance.';
   // The engine re-reads and reports the same thing: the objector was mistaken.
   const core = createCore(knowledgeBase, {
-    async deriveAnswer() { return derivation(original, sources.current); },
+    async deriveAnswer() { return { derivation: derivation(original, sources.current), costUsd: FAKE_COST }; },
   }, { sources });
 
   const first = await core.ask(QUESTION, THREAD);
@@ -275,7 +285,7 @@ test('a dispute the code cannot be re-read for changes nothing', async () => {
   const { directory, knowledgeBase } = base();
   const sources = movableSources();
   const stored = knowledgeBase.add(derivation('Credit is added to the balance.', sources.current));
-  const core = createCore(knowledgeBase, { async deriveAnswer() { return null; } }, { sources });
+  const core = createCore(knowledgeBase, { async deriveAnswer() { return { derivation: null, costUsd: 0 }; } }, { sources });
 
   const thread = {
     threadId: 't',
@@ -292,7 +302,7 @@ test('a dispute with no previous turn is treated as an ordinary question', async
   const { directory, knowledgeBase } = base();
   let asked: string | undefined;
   const core = createCore(knowledgeBase, {
-    async deriveAnswer(q) { asked = q; return null; },
+    async deriveAnswer(q) { asked = q; return { derivation: null, costUsd: 0 }; },
   }, { sources: movableSources() });
 
   await core.ask('that is wrong', { threadId: 't', turns: [] });
@@ -358,7 +368,7 @@ test('with no judge configured a near miss is derived, as before', async () => {
 test('the judge is not consulted when retrieval is already sure', async () => {
   const { directory, knowledgeBase, sources } = await withNearMiss();
   let consulted = 0;
-  const core = createCore(knowledgeBase, { async deriveAnswer() { return null; } }, {
+  const core = createCore(knowledgeBase, { async deriveAnswer() { return { derivation: null, costUsd: 0 }; } }, {
     sources,
     judge: { async choose() { consulted += 1; return undefined; } },
   });
@@ -382,7 +392,7 @@ test('the judge is not consulted when nothing is close, once there is a corpus',
   }
 
   let consulted = 0;
-  const core = createCore(knowledgeBase, { async deriveAnswer() { return null; } }, {
+  const core = createCore(knowledgeBase, { async deriveAnswer() { return { derivation: null, costUsd: 0 }; } }, {
     sources,
     judge: { async choose() { consulted += 1; return undefined; } },
   });
@@ -395,7 +405,7 @@ test('the judge is not consulted when nothing is close, once there is a corpus',
 test('on a small knowledge base a question matching nothing still gets a second opinion', async () => {
   const { directory, knowledgeBase, sources } = await withNearMiss();
   let offered = 0;
-  const core = createCore(knowledgeBase, { async deriveAnswer() { return null; } }, {
+  const core = createCore(knowledgeBase, { async deriveAnswer() { return { derivation: null, costUsd: 0 }; } }, {
     sources,
     judge: { async choose(_q, candidates) { offered = candidates.length; return undefined; } },
   });
@@ -451,9 +461,7 @@ test('an engine that reports no cost does not break the total', async () => {
   const sources = movableSources();
   const core = createCore(knowledgeBase, {
     async deriveAnswer() {
-      const { costUsd, ...free } = derivation('Credit is added.', sources.current);
-      void costUsd;
-      return free;
+      return { derivation: derivation('Credit is added.', sources.current), costUsd: 0 };
     },
   }, { sources });
 
@@ -525,7 +533,7 @@ test('a conversation answered entirely from the store never appears', async () =
   const { directory, knowledgeBase } = base();
   const sources = movableSources();
   knowledgeBase.add(derivation('Credit is added.', sources.current));
-  const core = createCore(knowledgeBase, { async deriveAnswer() { return null; } }, { sources });
+  const core = createCore(knowledgeBase, { async deriveAnswer() { return { derivation: null, costUsd: 0 }; } }, { sources });
 
   await core.ask(QUESTION, { threadId: 'free-thread', turns: [] });
   assert.deepEqual(core.spendByThread(), [], 'a free answer was recorded as spend');
@@ -561,5 +569,43 @@ test('the breakdown cannot be mutated by whoever reads it', async () => {
   spend[0]!.costUsd = 999;
 
   assert.equal(core.spendByThread()[0]?.costUsd, 1.25, 'the internal tally was writable from outside');
+  rmSync(directory, { recursive: true, force: true });
+});
+
+test('reading the codebase and finding nothing still costs, and is still counted', async () => {
+  const { directory, knowledgeBase } = base();
+  const sources = movableSources();
+  // The engine ran, read the codebase, and found no answer. That is a designed
+  // outcome and it is not free -- counting only successful derivations reported
+  // every honest miss as costing nothing.
+  const core = createCore(knowledgeBase, {
+    async deriveAnswer() { return { derivation: null, costUsd: 0.83 }; },
+  }, { sources });
+
+  const { answer } = await core.ask('what colour is the office carpet?', THREAD);
+
+  assert.equal(answer.source, 'miss');
+  assert.equal(knowledgeBase.size, 0, 'a failed attempt stored something');
+  assert.equal(core.spentUsd(), 0.83, 'a failed attempt was reported as free');
+  assert.equal(core.spendByThread()[0]?.costUsd, 0.83);
+  rmSync(directory, { recursive: true, force: true });
+});
+
+test('a dispute that finds nothing is charged too', async () => {
+  const { directory, knowledgeBase } = base();
+  const sources = movableSources();
+  const stored = knowledgeBase.add(derivation('Credit is added.', sources.current));
+  const core = createCore(knowledgeBase, {
+    async deriveAnswer() { return { derivation: null, costUsd: 0.61 }; },
+  }, { sources, disputeCooldownMs: 0 });
+
+  const thread = {
+    threadId: 't',
+    turns: [{ question: QUESTION, resolved: QUESTION, answeredFrom: 'knowledge-base' as const, entryFile: stored.file }],
+  };
+  const { answer } = await core.ask('that is wrong', thread);
+
+  assert.match(answer.shortAnswer, /could not read the code again/);
+  assert.equal(core.spentUsd(), 0.61, 'a failed re-read was reported as free');
   rmSync(directory, { recursive: true, force: true });
 });
