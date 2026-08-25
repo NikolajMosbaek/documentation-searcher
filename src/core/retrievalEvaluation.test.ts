@@ -3,6 +3,7 @@ import { join } from 'node:path';
 import { test } from 'node:test';
 import { DUPLICATE_SIMILARITY, loadKnowledgeBase, similarity } from './knowledgeBase.js';
 import { createRetrievalIndex } from './retrieval.js';
+import { NO_ANSWER, REPHRASINGS, STALE, UNRELATED } from './fixtures/labelledQuestions.js';
 
 /**
  * Retrieval measured against real entries rather than fixtures written to suit
@@ -18,40 +19,6 @@ import { createRetrievalIndex } from './retrieval.js';
 const CORPUS = join(import.meta.dirname, 'fixtures', 'corpus');
 const entries = loadKnowledgeBase(CORPUS);
 const index = createRetrievalIndex(entries);
-
-const NO_ANSWER = [
-  'answering-a-question-nothing-stored-covers.md',
-  'what-happens-when-no-stored-answer-covers-a-question.md',
-];
-const STALE = [
-  'refreshing-a-stored-answer-when-the-code-behind-it-has-chang.md',
-  'what-happens-when-a-stored-answer-is-out-of-date.md',
-];
-
-/** Rephrasings: none repeats the wording of the entry that should answer it. */
-const REPHRASINGS: Array<[string, string[]]> = [
-  ['if the bot has never seen my question before, what does it do?', NO_ANSWER],
-  ['is anything written down when it works out a new answer?', NO_ANSWER],
-  ['can the bot edit my files?', ['the-assistant-only-reads-the-codebase-never-changes-it.md']],
-  ['how does it know an answer went stale?', STALE],
-  ['what if the analysis service is down?', ['what-the-bot-does-when-the-code-reading-service-is-unreachab.md']],
-  ['how do I report a bad reply?', ['flagging-an-answer-as-wrong-in-the-conversation.md']],
-  ['what happens if nobody points it at any source code?', ['behaviour-when-no-codebase-is-configured.md']],
-  ['am I charged when my free period finishes?', ['trial-expiry.md']],
-  ['if I stop my subscription mid-cycle do I keep access?', ['cancel-subscription-mid-period.md']],
-  ['how many times is a declined card retried?', ['failed-payment-retry.md']],
-];
-
-/** Questions this knowledge base has no business answering. */
-const UNRELATED = [
-  'what colour is the office carpet?',
-  'who is the chief executive?',
-  'can I export my data to a spreadsheet?',
-  'how do I change my billing address?',
-  'what is the office wifi password?',
-  'does the bot support Slack as well?',
-  'how many people work here?',
-];
 
 test('the corpus is real, and big enough to mean something', () => {
   assert.ok(entries.length >= 12, `only ${entries.length} entries`);

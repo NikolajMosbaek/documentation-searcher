@@ -20,7 +20,11 @@ It was verified once, live, against one deliberately false objection, and it hel
 
 *Suggested:* compare a re-derived answer against the one it replaces and flag a reversal for human review, so a capitulation is visible rather than silent.
 
-### Retrieval's three numbers come from twelve entries about two subjects
+### Everything measured so far was measured on twelve entries about two subjects
+
+Retrieval's three thresholds, the merge bar, and the judge's accuracy have all now been measured rather than assumed — but against the same small corpus, drawn from this bot and subscription billing.
+
+
 
 `MIN_SCORE`, `MIN_COVERAGE` and `MIN_MARGIN` were measured in iteration 19 against a real corpus, which is a great deal better than the guesses they replaced — but that corpus is this bot and subscription billing, and nothing else. Iteration 19 also showed the previous settings were not merely mistuned but *inert* at that size, which is a reminder that a threshold correct at twelve entries may be meaningless at two hundred.
 
@@ -93,7 +97,7 @@ These were called deliberately during the run, and each could reasonably have go
 Recorded so nobody spends time rediscovering them.
 
 - **A derived answer that mentions code is discarded, not stored.** Costs a real derivation for what may be one stray backtick. A stored entry is served to everyone afterwards, so a miss is the better failure.
-- **The judge is told to choose nothing when unsure.** Its false negatives are invisible and cost a derivation; its false positives would answer a question nobody asked.
+- **The judge is told to choose nothing when unsure.** Its false negatives are invisible and cost a derivation; its false positives would answer a question nobody asked. Measured in iteration 24 on the committed corpus: of ten answerable questions it rescued eight and picked none wrongly, and of seven unanswerable ones it declined every one that reached it. Re-runnable with `npm run judge-eval`.
 - **Follow-ups and near misses cost seconds.** Measured as fixed harness overhead, not inference — a smaller model was slower.
 - **Most repeat questions now cost cents and seconds rather than being instant and free.** That is iteration 19 buying a ~30% reduction in wrong answers.
 

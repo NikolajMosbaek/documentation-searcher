@@ -66,8 +66,11 @@ npm run typecheck
 ```
 
 ```sh
+npm run judge-eval    # measures the second opinion against a real model; costs cents
 DOCSEARCHER_CODEBASE=/path/to/a/codebase npm run soak
 ```
+
+`npm run judge-eval` asks a real model the same labelled questions the hermetic evaluation uses, and reports how many were answered from an entry that does not answer them. Measured on the committed corpus: of ten questions it can answer, two are served by retrieval alone and eight are rescued by the judge, with none picked wrongly and none declined. Of seven it cannot, four never reach the judge and three are declined.
 
 The soak runs one realistic session end to end against the real engine — a cold question, the same question again, a rephrasing, a follow-up, a dispute with a false claim, a repeat dispute, a source file edited underneath it, and the refresh that follows. It costs two to three dollars and takes a few minutes, which is why it is not part of `npm test`. It copies the codebase first, so the original is never modified.
 
@@ -185,6 +188,8 @@ src/core/claudeJudge.ts    weighs near-miss candidates; reads neither the codeba
 src/core/claudeProposer.ts reads the codebase and proposes what is worth documenting first
 
 src/core/fixtures/corpus/  twelve real entries this bot wrote, used to measure retrieval rather than assume it
+src/core/fixtures/labelledQuestions.ts  the questions both evaluations are measured against, and their answers
+src/judgeEval.ts           measures the second opinion against a real model -- run with `npm run judge-eval`
 src/core/*.test.ts         the suite -- run with `npm test`
 src/docs.test.ts           checks this README against the code, because nothing else does
 knowledge-base/            the entries themselves, as markdown
