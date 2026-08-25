@@ -32,6 +32,15 @@ const DEPENDENT_OPENER =
 const REFERENT = /\b(it|its|they|them|their|that|this|those|these|he|she|him|her|there|same)\b/i;
 
 /**
+ * Asking for more of the previous answer without naming any of it. Measured
+ * additions: "could you expand on the third step?" and "say more about the
+ * edge cases" are plainly follow-ups and cleared every rule above, because
+ * they open with a verb and name enough nouns to look self-contained.
+ */
+const ELABORATION =
+  /^(say|tell) (me )?more|^(go on|expand|elaborate|explain more)\b|\bthe (first|second|third|fourth|fifth|last|next) (step|point|one|case|part|bit)\b/i;
+
+/**
  * A free guess at whether a question needs the conversation to make sense.
  *
  * Deliberately biased towards saying yes. A false positive costs one cheap
@@ -46,6 +55,9 @@ export function looksDependent(question: string): boolean {
   if (!trimmed) return false;
 
   return (
-    DEPENDENT_OPENER.test(trimmed) || REFERENT.test(trimmed) || tokenize(trimmed).length <= 2
+    DEPENDENT_OPENER.test(trimmed) ||
+    REFERENT.test(trimmed) ||
+    ELABORATION.test(trimmed) ||
+    tokenize(trimmed).length <= 2
   );
 }

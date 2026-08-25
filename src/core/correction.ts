@@ -9,12 +9,27 @@
 const DISPUTE = new RegExp(
   [
     // "that's wrong", "this is out of date", "that was not right"
-    String.raw`\b(that|this)(['’]s|s| is| was)? +(wrong|incorrect|not right|not true|not correct|out of date|outdated)\b`,
-    String.raw`\b(isn|doesn|wasn)['’]?t (right|correct|match|what happens)\b`,
+    String.raw`\b(that|this)(['’]s|s| is| was)? +(wrong|incorrect|not right|not true|not correct|out of date|outdated|stale)\b`,
+    String.raw`\b(isn|doesn|wasn|don)['’]?t (right|correct|match|sound right|think so|what happens)\b`,
     String.raw`\bno,? +that\b`,
     String.raw`\bactually,? +(it|that|the)\b`,
     String.raw`\b(wrong answer|no longer true|not what happens)\b`,
     String.raw`\bthat['’]?s not how\b`,
+    // Measured additions: ten of eighteen real-sounding disputes fell through
+    // the patterns above, all of them ordinary things a person says.
+    String.raw`\bdoesn['’]?t sound right\b`,
+    String.raw`\b(have|got) (that|it|this) backwards\b`,
+    // Needs something pointing back at the last answer: "does the answer
+    // contradict the docs?" is a question, not a dispute.
+    String.raw`\b(that|this|it) contradicts?\b`,
+    String.raw`\b(you are|you're|you) mistaken\b`,
+    String.raw`\bused to be (true|the case|right)\b`,
+    String.raw`\bthe answer is (stale|old|wrong|out of date)\b`,
+    // A claim that the code moved is a dispute about the answer, not a question.
+    String.raw`\bwe (changed|removed|stopped|replaced|rewrote) (that|this|it)\b`,
+    // Bare negations, but only as the entire message -- "nope" inside a
+    // sentence is not a dispute, and "incorrect" appears in ordinary questions.
+    String.raw`^\s*(nope|not quite|incorrect|wrong|no)[.!]?\s*$`,
   ].join('|'),
   'i',
 );

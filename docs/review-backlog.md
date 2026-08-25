@@ -40,7 +40,13 @@ An asker's exact words are stored in the entry they produce and printed in every
 
 ### Two heuristics decide things a regex cannot really decide
 
-`looksDependent` decides whether a question leans on the conversation; `looksLikeCorrection` decides whether a message disputes the last answer. Both are regexes standing in for understanding, deliberately biased in opposite directions, and neither has its accuracy measured. Their false negatives are invisible: the question is simply treated as something else.
+`looksDependent` decides whether a question leans on the conversation; `looksLikeCorrection` decides whether a message disputes the last answer. Both are regexes standing in for understanding, deliberately biased in opposite directions.
+
+Measured in iteration 23. `looksLikeCorrection` was missing ten of eighteen ordinary ways of saying an answer is wrong — the correction path was not firing for most real phrasings — and has been widened; it now catches all eighteen while still passing thirteen model-written questions that are not disputes.
+
+`looksDependent` catches every follow-up tried, and wrongly flags nine of thirteen genuinely standalone questions, because a question about a bot naturally says "it". That is left alone: a false positive costs a rewrite that returns the question unchanged, and a false negative costs a derivation. Both sets of examples are committed as tests.
+
+What remains: the positive examples are mine, so they share an author with the patterns. Only the thirteen standalone questions are independent data.
 
 ### Merging is automatic, irreversible, and only fires within one code state
 

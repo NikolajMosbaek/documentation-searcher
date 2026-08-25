@@ -38,3 +38,40 @@ test('an objection is passed on as something to check, never as fact', () => {
   // The engine must be told it is allowed to disagree with the person.
   assert.match(guidance, /say so plainly rather than changing/);
 });
+
+/**
+ * Measured in iteration 23 against eighteen ways a person might say the last
+ * answer was wrong. Ten of them fell through the original patterns, which meant
+ * the correction path simply did not fire for most real phrasings.
+ */
+test('the ways people actually say an answer is wrong are recognised', () => {
+  for (const message of [
+    "that doesn't sound right to me",
+    'I think you have that backwards',
+    'we changed that last sprint',
+    'hmm, that contradicts what the code says',
+    'nope',
+    'not quite',
+    'the answer is stale',
+    'you are mistaken about the retries',
+    'incorrect',
+    'that used to be true but not any more',
+  ]) {
+    assert.equal(looksLikeCorrection(message), true, message);
+  }
+});
+
+test('questions that merely mention being wrong are not disputes', () => {
+  // "does the answer contradict the docs?" was flagged when the contradiction
+  // pattern was first widened, and is an ordinary question.
+  for (const message of [
+    'does the answer contradict the docs?',
+    'why is the retry count incorrect in the invoice?',
+    'who do I tell when something is out of date?',
+    'how do I correct an entry?',
+    'what happens if the payment is wrong?',
+    'what does it say when it does not know the answer?',
+  ]) {
+    assert.equal(looksLikeCorrection(message), false, message);
+  }
+});
