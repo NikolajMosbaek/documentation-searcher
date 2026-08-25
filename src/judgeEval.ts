@@ -1,10 +1,5 @@
 import { join } from 'node:path';
-import {
-  createClaudeJudge,
-  createKnowledgeBase,
-  loadKnowledgeBase,
-} from './core/index.js';
-import { createRetrievalIndex } from './core/retrieval.js';
+import { createClaudeJudge, createKnowledgeBase } from './core/index.js';
 import { CORPUS_DIRECTORY, REPHRASINGS, UNRELATED } from './core/fixtures/labelledQuestions.js';
 
 /**
@@ -22,7 +17,6 @@ import { CORPUS_DIRECTORY, REPHRASINGS, UNRELATED } from './core/fixtures/labell
 const CORPUS = process.env.DOCSEARCHER_KNOWLEDGE_BASE ?? join(process.cwd(), CORPUS_DIRECTORY);
 
 const knowledgeBase = createKnowledgeBase(CORPUS);
-const index = createRetrievalIndex(loadKnowledgeBase(CORPUS));
 const judge = createClaudeJudge({
   model: process.env.DOCSEARCHER_JUDGE_MODEL ?? process.env.DOCSEARCHER_MODEL,
   cwd: process.cwd(),
@@ -40,12 +34,12 @@ let declinedCorrectly = 0;
 let answeredWrongly = 0;
 
 for (const [question, acceptable] of REPHRASINGS) {
-  const served = index.best(question);
-  if (served) {
-    const right = acceptable.includes(served.entry.file);
-    if (right) servedDirectly += 1;
-    else pickedWrong += 1;
-    console.log(`${right ? 'retrieval ' : 'RETRIEVAL WRONG'}  ${question}`);
+  // The exact question is the only thing answered without asking anybody, and
+  // none of these are phrased that way.
+  const exact = knowledgeBase.find(question);
+  if (exact) {
+    servedDirectly += 1;
+    console.log(`exact match  ${question}`);
     continue;
   }
 
@@ -63,11 +57,6 @@ for (const [question, acceptable] of REPHRASINGS) {
 }
 
 for (const question of UNRELATED) {
-  if (index.best(question)) {
-    answeredWrongly += 1;
-    console.log(`RETRIEVAL ANSWERED IT  ${question}`);
-    continue;
-  }
   const shortlist = knowledgeBase.candidates(question);
   if (shortlist.length === 0) {
     neverAsked += 1;
@@ -85,7 +74,7 @@ for (const question of UNRELATED) {
 }
 
 console.log(`\nQuestions the knowledge base answers (${REPHRASINGS.length}):`);
-console.log(`  served by retrieval alone  : ${servedDirectly}`);
+console.log(`  answered by exact wording  : ${servedDirectly}`);
 console.log(`  rescued by the judge       : ${rescued}`);
 console.log(`  wrong entry chosen         : ${pickedWrong}`);
 console.log(`  declined, so pays to derive: ${declinedWhenItShouldNot}`);

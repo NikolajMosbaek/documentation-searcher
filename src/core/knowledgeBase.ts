@@ -199,19 +199,19 @@ export function normalizeQuestion(question: string): string {
 }
 
 /**
- * Two mechanisms, and the order matters.
+ * The one thing answered without asking anybody: a question asked before in
+ * exactly these words. Whoever paid for an entry, and anyone who phrases it the
+ * same way, gets it back immediately and for nothing.
  *
- * The exact question is a *guarantee*: whoever paid for an entry, and anyone
- * who asks in the same words, is certain to get it back. Retrieval is a
- * *judgement*: it reads the whole entry rather than its curated keywords, and
- * it will find an entry phrased differently from the question -- but only when
- * they share vocabulary. Neither subsumes the other, so both are here.
- *
- * Building the index per call is fine at this size and honest about what it
- * costs; `createKnowledgeBase` caches one and rebuilds it on write.
+ * Everything else is a judgement, and retrieval is no longer trusted to make
+ * it — see `RetrievalIndex`. Callers that need an answer for a question phrased
+ * differently ask for `candidates` and put them to a judge.
  */
 export function findEntry(entries: Entry[], question: string): Entry | undefined {
-  return findWithIndex(entries, createRetrievalIndex(entries), question);
+  const normalized = normalizeQuestion(question);
+  return entries.find((entry) =>
+    entry.questions.some((asked) => normalizeQuestion(asked) === normalized),
+  );
 }
 
 /**
@@ -235,17 +235,22 @@ export function isDuplicate(entry: Entry, derivation: Derivation): boolean {
 }
 
 /**
- * Measured against real duplicates rather than imagined ones.
+ * Measured against real duplicates rather than imagined ones, twice.
  *
- * Iteration 12 set this to 0.6 from two sentences written to *resemble* a
- * re-derivation, which scored 0.636. Real re-derivations of the same question,
- * produced by this engine on separate runs, score 0.400 and 0.500 -- so the
- * bar sat above every genuine duplicate this project has ever produced, and
- * the merge could not fire.
+ * Iteration 12 set it to 0.6 from two sentences written to *resemble* a
+ * re-derivation. Iteration 22 measured real ones on a twelve-entry corpus --
+ * 0.400 and 0.500, ranking first and second of sixty-six pairs, with the
+ * highest non-duplicate at 0.310 -- and moved it into that gap.
  *
- * Across all 66 pairs in the evaluation corpus those two duplicates rank first
- * and second. The highest-scoring pair that is *not* the same behaviour scores
- * 0.310, and the mean of the rest is 0.082. 0.35 sits in that gap.
+ * Doubling the corpus removed the gap. Five pairs now describe the same
+ * behaviour and score from 0.182 to 0.885, while the most alike pair that is
+ * *not* the same behaviour scores 0.317. The distributions overlap, so no
+ * threshold catches every duplicate without also merging entries that are
+ * merely neighbours.
+ *
+ * 0.35 is therefore chosen for safety rather than coverage: nothing that is not
+ * a duplicate reaches it, and the most obvious duplicates clear it. The rest
+ * accumulate, which is a known and now measured limitation.
  */
 export const DUPLICATE_SIMILARITY = 0.35;
 
@@ -258,20 +263,6 @@ export function similarity(a: string, b: string): number {
   let shared = 0;
   for (const word of left) if (right.has(word)) shared += 1;
   return shared / (left.size + right.size - shared);
-}
-
-function findWithIndex(
-  entries: Entry[],
-  index: ReturnType<typeof createRetrievalIndex>,
-  question: string,
-): Entry | undefined {
-  const normalized = normalizeQuestion(question);
-  const sameQuestion = entries.find((entry) =>
-    entry.questions.some((asked) => normalizeQuestion(asked) === normalized),
-  );
-  if (sameQuestion) return sameQuestion;
-
-  return index.best(question)?.entry;
 }
 
 /**
@@ -306,8 +297,8 @@ export function createKnowledgeBase(directory: string): KnowledgeBase {
   const entries = loadKnowledgeBase(directory);
 
   // Rebuilt whenever an entry is written, because document frequencies shift
-  // with the corpus -- a stale index would score against a knowledge base that
-  // no longer exists.
+  // with the corpus -- a stale index would rank against a knowledge base that
+  // no longer exists. Used only for shortlisting; nothing here decides.
   let index = createRetrievalIndex(entries);
   const reindex = () => {
     index = createRetrievalIndex(entries);
@@ -315,7 +306,7 @@ export function createKnowledgeBase(directory: string): KnowledgeBase {
 
   return {
     find(question: string): Entry | undefined {
-      return findWithIndex(entries, index, question);
+      return findEntry(entries, question);
     },
 
     byFile(file: string): Entry | undefined {

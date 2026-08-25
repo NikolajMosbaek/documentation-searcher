@@ -9,15 +9,41 @@ import type { Entry } from './knowledgeBase.js';
  * real retrieval rather than the substring count it replaces, and it scores
  * every word of an entry rather than only its curated keywords.
  */
+/**
+ * Ranks entries against a question. It does not decide between them.
+ *
+ * It used to. Three thresholds — a score, how much of the question was
+ * covered, and how far ahead of the runner-up — were measured against a corpus
+ * of twelve entries and served nothing wrong. Doubling the corpus to
+ * twenty-four broke them: "how many people work here?" was answered from an
+ * entry about conversation history, at a score of 5.91, three quarters of the
+ * question covered, and twice the runner-up. It cleared every bar.
+ *
+ * The reason is structural rather than a matter of tuning. A score grows with
+ * the size of the corpus and the rarity of the words in it, so a number that is
+ * right for twelve entries is wrong for twenty-four and wrong again for a
+ * hundred. Re-tuning buys time, not correctness.
+ *
+ * So it stopped deciding. Retrieval narrows the field; something that can read
+ * the question decides. The one thing still answered without asking anybody is
+ * a question that has been asked in exactly those words before, which needs no
+ * scoring at all.
+ */
 export interface RetrievalIndex {
-  best(question: string): Match | undefined;
   /**
-   * Entries that share something with the question but not enough to be served
-   * on that evidence alone. The band between "obviously right" and "nothing at
-   * all", where a cheap second opinion is worth more than a dollar derivation.
+   * Entries worth considering, best first. Not answers -- candidates.
+   *
+   * The default limit is measured, not chosen. On a corpus of twenty-four the
+   * right entry for one question ranks ninth, so a shortlist of five loses it
+   * and the judge never sees it -- and a judge can only choose from what it is
+   * shown. Ten recovers every question tried, and costs nothing in noise: the
+   * same three unrelated questions are shortlisted at five as at fifteen.
+   *
+   * This is the number most likely to be wrong on a larger knowledge base, and
+   * `npm run judge-eval` plus the evaluation tests are how to find out.
    */
   candidates(question: string, limit?: number): Match[];
-  /** Exposed so the tuning of the threshold can be inspected and tested. */
+  /** Exposed so the ranking can be inspected and tested. */
   rank(question: string): Match[];
 }
 
@@ -29,36 +55,15 @@ export interface Match {
 }
 
 /**
- * What it takes to answer on lexical evidence alone, without a second opinion.
- *
- * These are deliberately high. Measured against a twelve-entry corpus of real
- * entries this bot wrote, the previous bars (score 1.0, coverage 0.34, no
- * margin) served a wrong entry for three of ten rephrasings and answered two of
- * seven entirely unrelated questions. Worse, the whole range from 0.5 to 2.0
- * behaved almost identically -- an absolute score cannot discriminate, because
- * it grows with the corpus and with the rarity of the words involved.
- *
- * The margin is what actually separates a confident match from a lucky one. A
- * wrong top-ranked entry beat its runner-up by 1.04x and 1.09x; a right one by
- * 2.2x to 2.6x.
- *
- * At these three, nothing wrong was served and nothing unrelated was answered,
- * and in every case that fell short the correct entry was still inside the
- * shortlist handed to the judge. Retrieval shortlists; the judge decides.
- */
-/**
  * At or below this many entries, a lexical score carries very little. Words are
  * shared by most of the corpus, so inverse document frequency has almost
  * nothing to distinguish, and a question that matches nothing may simply be one
- * the statistics cannot see. A second opinion on the whole knowledge base is
- * cheap at this size and far cheaper than deriving an answer that already
- * exists, so nothing is written off on lexical evidence alone.
+ * the statistics cannot see.
  */
 const TOO_SMALL_TO_JUDGE_LEXICALLY = 5;
 
-const MIN_SCORE = 4.0;
-const MIN_COVERAGE = 0.75;
-const MIN_MARGIN = 2.0;
+/** How many candidates a judge is shown. Measured -- see `candidates`. */
+const SHORTLIST_SIZE = 10;
 
 const K1 = 1.2;
 const B = 0.75;
@@ -142,40 +147,10 @@ export function createRetrievalIndex(entries: Entry[]): RetrievalIndex {
     return (frequency * (K1 + 1)) / (frequency + K1 * (1 - B + (B * length) / averageLength));
   }
 
-  /**
-   * The top-ranked entry, and whether it is far enough ahead of the next one to
-   * be trusted without asking anybody.
-   */
-  function decide(question: string): { served?: Match; ranked: Match[] } {
-    const ranked = rank(question);
-    const top = ranked[0];
-    if (!top) return { ranked };
-
-    // Nothing else scored at all, so there is nothing it could be confused with.
-    const runnerUp = ranked[1]?.score ?? 0;
-    const margin = runnerUp === 0 ? Infinity : top.score / runnerUp;
-
-    const confident =
-      top.score >= MIN_SCORE && top.coverage >= MIN_COVERAGE && margin >= MIN_MARGIN;
-    return confident ? { served: top, ranked } : { ranked };
-  }
-
   return {
     rank,
-    best(question: string): Match | undefined {
-      return decide(question).served;
-    },
-
-    candidates(question: string, limit = 5): Match[] {
-      const { served, ranked } = decide(question);
-
-      // Something was confident enough to answer with; nobody needs asking.
-      if (served) return [];
-
-      // Everything that scored, best first. These are not near misses in the
-      // old sense of "almost cleared a bar" -- the bars are now high enough
-      // that most real matches land here, and the judge is what turns a
-      // shortlist into an answer.
+    candidates(question: string, limit = SHORTLIST_SIZE): Match[] {
+      const ranked = rank(question);
       if (ranked.length > 0) return ranked.slice(0, limit);
 
       // Nothing scored. On a large enough knowledge base that means the question

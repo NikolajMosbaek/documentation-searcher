@@ -3,6 +3,7 @@ import { join } from 'node:path';
 import {
   chosenQuestions,
   createClaudeEngine,
+  createClaudeJudge,
   createClaudeProposer,
   createKnowledgeBase,
   estimateCostUsd,
@@ -69,8 +70,10 @@ async function writeChosen(): Promise<void> {
 
   const knowledgeBase = createKnowledgeBase(KNOWLEDGE_BASE);
 
-  // What is already covered is free to determine, so a dry run can say exactly
-  // which questions would be paid for rather than guessing from the total.
+  // Only an exact repeat is free to spot. A question the knowledge base answers
+  // in different words needs the same second opinion everything else does, so
+  // the estimate below counts anything not word-for-word identical as
+  // outstanding -- it is an upper bound, and the run itself checks properly.
   const outstanding = questions.filter((question) => !knowledgeBase.find(question));
   const { low, high } = estimateCostUsd(outstanding.length);
 
@@ -87,16 +90,24 @@ async function writeChosen(): Promise<void> {
   }
 
   const engine = createClaudeEngine({ codebase: CODEBASE!, model: MODEL, maxBudgetUsd: 5 });
+  const judge = createClaudeJudge({
+    model: process.env.DOCSEARCHER_JUDGE_MODEL ?? MODEL,
+    cwd: CODEBASE!,
+  });
   let written = 0;
   let spent = 0;
 
   for (const [index, question] of questions.entries()) {
     const position = `[${index + 1}/${questions.length}]`;
 
-    // Seeding twice, or seeding something an asker already triggered, should
-    // not be paid for twice.
-    if (knowledgeBase.find(question)) {
-      console.log(`${position} already covered, skipping: ${question}`);
+    // Seeding twice, or seeding something an asker already triggered, should not
+    // be paid for twice. An exact repeat is free to spot; anything else costs a
+    // second opinion, which is cents against the dollar a derivation costs.
+    const covered =
+      knowledgeBase.find(question) ??
+      (await judge.choose(question, knowledgeBase.candidates(question)));
+    if (covered) {
+      console.log(`${position} already covered by ${covered.file}, skipping: ${question}`);
       continue;
     }
 

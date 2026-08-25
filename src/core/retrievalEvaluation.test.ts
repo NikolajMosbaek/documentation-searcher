@@ -3,7 +3,7 @@ import { join } from 'node:path';
 import { test } from 'node:test';
 import { DUPLICATE_SIMILARITY, loadKnowledgeBase, similarity } from './knowledgeBase.js';
 import { createRetrievalIndex } from './retrieval.js';
-import { NO_ANSWER, REPHRASINGS, STALE, UNRELATED } from './fixtures/labelledQuestions.js';
+import { FLAGGING, NO_ANSWER, REPHRASINGS, STALE, UNRELATED } from './fixtures/labelledQuestions.js';
 
 /**
  * Retrieval measured against real entries rather than fixtures written to suit
@@ -21,37 +21,32 @@ const entries = loadKnowledgeBase(CORPUS);
 const index = createRetrievalIndex(entries);
 
 test('the corpus is real, and big enough to mean something', () => {
-  assert.ok(entries.length >= 12, `only ${entries.length} entries`);
+  assert.ok(entries.length >= 24, `only ${entries.length} entries`);
   // Two behaviours are covered twice, by entries the engine wrote on different
   // runs. Retrieval has to cope with that, so the corpus keeps them.
-  assert.equal(entries.filter((e) => NO_ANSWER.includes(e.file)).length, 2);
-  assert.equal(entries.filter((e) => STALE.includes(e.file)).length, 2);
+  for (const group of [NO_ANSWER, STALE, FLAGGING]) {
+    assert.equal(entries.filter((e) => group.includes(e.file)).length, group.length, group.join(' / '));
+  }
 });
 
-test('nothing is answered from an entry that does not answer it', () => {
-  const wrong = REPHRASINGS.filter(([question, acceptable]) => {
-    const served = index.best(question);
-    return served !== undefined && !acceptable.includes(served.entry.file);
-  }).map(([question]) => question);
-
-  assert.deepEqual(wrong, [], 'served an entry that does not answer the question');
-});
-
-test('an unrelated question is never answered', () => {
-  const answered = UNRELATED.filter((question) => index.best(question) !== undefined);
-  assert.deepEqual(answered, [], 'answered a question this knowledge base does not cover');
-});
-
-test('whatever is not answered outright still reaches the judge with the right entry in it', () => {
+test('the right entry is always in the shortlist', () => {
+  // The property the whole arrangement rests on. Retrieval is allowed to be
+  // unsure -- it always is now -- but it is not allowed to lose the answer,
+  // because the judge can only choose from what it is shown.
   const unreachable = REPHRASINGS.filter(([question, acceptable]) => {
-    if (index.best(question)) return false;
     const shortlist = index.candidates(question);
     return !shortlist.some((match) => acceptable.includes(match.entry.file));
   }).map(([question]) => question);
 
-  // This is the property the whole arrangement depends on. Retrieval is allowed
-  // to be unsure, but it is not allowed to lose the answer.
   assert.deepEqual(unreachable, [], 'the right entry was not in the shortlist');
+});
+
+test('retrieval has no way to answer anything by itself', () => {
+  // There is deliberately no `best`. Three thresholds that decided on lexical
+  // evidence were measured at twelve entries, served nothing wrong, and served
+  // two wrong answers when the corpus doubled. The interface no longer offers
+  // the option.
+  assert.equal('best' in index, false, 'retrieval can decide again');
 });
 
 test('a question sharing no words with anything is not even shortlisted', () => {
@@ -65,15 +60,18 @@ test('a question sharing no words with anything is not even shortlisted', () => 
  * engine genuinely produced for the same question on separate runs.
  */
 test('real duplicates score above the merge bar, and nothing else does', () => {
-  const DUPLICATES = [NO_ANSWER, STALE];
+  const DUPLICATES = [NO_ANSWER, STALE, FLAGGING];
   const byFile = (file: string) => entries.find((e) => e.file === file)!;
 
-  const duplicateScores = DUPLICATES.map(([a, b]) =>
-    similarity(byFile(a!).answer.shortAnswer, byFile(b!).answer.shortAnswer),
+  // Every pair within a group of entries about the same behaviour.
+  const duplicateScores = DUPLICATES.flatMap((group) =>
+    group.flatMap((a, i) =>
+      group.slice(i + 1).map((b) => similarity(byFile(a).answer.shortAnswer, byFile(b).answer.shortAnswer)),
+    ),
   );
 
   const isDuplicatePair = (a: string, b: string) =>
-    DUPLICATES.some((pair) => pair.includes(a) && pair.includes(b));
+    DUPLICATES.some((group) => group.includes(a) && group.includes(b));
 
   const others: number[] = [];
   for (let i = 0; i < entries.length; i += 1) {
@@ -85,24 +83,29 @@ test('real duplicates score above the merge bar, and nothing else does', () => {
   }
 
   const lowestDuplicate = Math.min(...duplicateScores);
+  const highestDuplicate = Math.max(...duplicateScores);
   const highestOther = Math.max(...others);
 
-  // Iteration 12's bar of 0.6 sat above both of these, so the merge it added
-  // could never have fired on anything this engine actually produced.
-  assert.ok(lowestDuplicate < 0.6, `a real duplicate scored ${lowestDuplicate.toFixed(3)}`);
-
-  // The property the bar depends on: real duplicates and everything else are
-  // separable at all.
+  // Merging must never join two entries that are not the same behaviour. This
+  // is the property that has to hold; it is what makes an irreversible,
+  // automatic decision acceptable.
   assert.ok(
-    lowestDuplicate > highestOther,
-    `duplicates bottom out at ${lowestDuplicate.toFixed(3)} but something else reached ${highestOther.toFixed(3)}`,
+    highestOther < DUPLICATE_SIMILARITY,
+    `something that is not a duplicate scored ${highestOther.toFixed(3)}, at or above the bar of ${DUPLICATE_SIMILARITY}`,
   );
 
-  // And the bar actually in use sits inside that gap. Asserting the measured
-  // values alone would let the constant be changed to anything without notice.
+  // And the rule must still catch something, or it is dead code -- which is
+  // exactly what it was before iteration 22.
   assert.ok(
-    highestOther < DUPLICATE_SIMILARITY && DUPLICATE_SIMILARITY <= lowestDuplicate,
-    `the bar is ${DUPLICATE_SIMILARITY}, outside the measured gap ` +
-      `${highestOther.toFixed(3)}..${lowestDuplicate.toFixed(3)}`,
+    highestDuplicate >= DUPLICATE_SIMILARITY,
+    `no real duplicate reaches the bar; the highest scored ${highestDuplicate.toFixed(3)}`,
   );
+
+  // What is *not* asserted, because it is no longer true: that duplicates and
+  // everything else are separable. At twenty-four entries the least alike pair
+  // describing one behaviour scores about 0.18, below the most alike pair
+  // describing two different ones at about 0.32. No threshold catches every
+  // duplicate without merging things that are merely neighbours, so merging
+  // catches the obvious cases and the rest accumulate.
+  assert.ok(lowestDuplicate < highestOther, 'the distributions no longer overlap -- re-measure the bar');
 });
